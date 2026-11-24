@@ -1,0 +1,306 @@
+{
+  "name": "kiro-code-reviewer",
+  "version": "0.1.0",
+  "displayName": "Kiro Reviewer",
+  "description": "Pre-PR AI code review: prepares a redacted diff locally, sends it to the Kiro Reviewer service when you ask for a review, and shows findings with cross-iteration tracking.",
+  "author": "Kiro",
+  "skills": ["skills/code-review"],
+  "mcpServers": {
+    "code-reviewer": {
+      "command": "/bin/sh",
+      "args": ["-c", "exec ~/.kiro/crew/apps/kiro-code-reviewer/bin/kiro-code-reviewer-mcp"],
+      "timeout": 150000,
+      "autoApprove": [
+        "code_review_prepare",
+        "code_review_submit",
+        "code_review_get",
+        "code_review_suppress",
+        "code_review_context_prepare",
+        "code_review_context_submit",
+        "code_review_status"
+      ],
+      "poolable": true
+    }
+  },
+  "permissions": {
+    "mcpTools": [
+      "code_review_prepare",
+      "code_review_submit",
+      "code_review_get",
+      "code_review_suppress",
+      "code_review_context_prepare",
+      "code_review_context_submit",
+      "code_review_status"
+    ],
+    "network": true,
+    "storage": true,
+    "api": ["/apps/kiro-code-reviewer/api"]
+  },
+  "setup": {
+    "onEnable": "bash setup/on_enable.sh",
+    "onEnableTimeout": 30
+  },
+  "dependencies": {
+    "commands": ["git", "node"]
+  },
+  "platform": {
+    "os": ["macos", "linux"]
+  },
+  "backend": {
+    "entryPoint": "dist/ui-backend.mjs",
+    "port": "auto",
+    "healthCheck": "/health",
+    "hooks": {
+      "routes": "backend.routes:register_routes"
+    }
+  },
+  "ui": {
+    "entry": "index.mjs",
+    "pages": [
+      {
+        "route": "/apps/kiro-code-reviewer",
+        "label": "Kiro Reviewer",
+        "icon": "ScanSearch"
+      }
+    ]
+  },
+  "agentTools": {
+    "namespace": "code_review",
+    "route": "agent-tools",
+    "tools": [
+      {
+        "name": "code_review_prepare",
+        "title": "Prepare Code review payload",
+        "description": "Local only, no network. Collects the git diff from the merge-base of `base` and HEAD, base-revision rules and approved context files; redacts secrets; checks limits; stages the payload. Returns prepared_id, payload_digest and summaryMarkdown. Show summaryMarkdown to the user, then call code_review_submit.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repo_path": {
+              "type": "string",
+              "description": "Absolute path of the git repository root."
+            },
+            "base": {
+              "type": "string",
+              "description": "Base ref, e.g. origin/mainline."
+            },
+            "level": {
+              "type": "string",
+              "description": "Review depth (new reviews only).",
+              "enum": ["quick", "standard", "deep"]
+            },
+            "iteration_budget": {
+              "type": "integer",
+              "description": "Max iterations, 1..50 (new reviews only).",
+              "minimum": 1,
+              "maximum": 50
+            },
+            "context_files": {
+              "type": "array",
+              "description": "Up to 20 repo-relative files the user approved.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "include_uncommitted": {
+              "type": "boolean",
+              "description": "Diff the working tree instead of HEAD (default false)."
+            },
+            "review_id": {
+              "type": "string",
+              "description": "Existing review; prepares a resubmit."
+            },
+            "context_rounds": {
+              "type": "integer",
+              "description": "Rounds in which the reviewer may request more repository context, 0..2 per review (new reviews only; default 2; 0 opts out).",
+              "minimum": 0,
+              "maximum": 2
+            },
+            "include_manifest": {
+              "type": "boolean",
+              "description": "Send the tracked file names (no content) so the reviewer can request context (default true)."
+            },
+            "intent": {
+              "type": "string",
+              "description": "A short statement of what this change is meant to do, written from the task. Shown in the summary and sent to the reviewer as an untrusted author claim for lightweight spec-drift checking. Optional."
+            },
+            "responses": {
+              "type": "string",
+              "description": "Dispositions of the PREVIOUS iteration's findings (resubmit only). disposition in fixed | false_positive | wont_fix | deferred | question. For a BLOCKING finding you want to set aside, set acknowledged: true ONLY after the user has said \"yes\" in chat to that specific finding; the service records an unacknowledged blocking dismissal as a no-op. Shown to the user in the summary. Pass the array JSON-encoded as a string.",
+              "maxLength": 65536
+            }
+          },
+          "required": ["repo_path", "base"],
+          "additionalProperties": false
+        },
+        "timeoutSeconds": 120,
+        "maxResultChars": 60000,
+        "result": "text"
+      },
+      {
+        "name": "code_review_submit",
+        "title": "Send staged payload to Kiro Reviewer",
+        "description": "Sends a payload staged by code_review_prepare to the Kiro Reviewer service. Pass prepared_id and payload_digest exactly as returned by prepare.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prepared_id": {
+              "type": "string",
+              "description": "prepared_id returned by code_review_prepare."
+            },
+            "payload_digest": {
+              "type": "string",
+              "description": "payload_digest returned by code_review_prepare."
+            }
+          },
+          "required": ["prepared_id", "payload_digest"],
+          "additionalProperties": false
+        },
+        "timeoutSeconds": 60,
+        "maxResultChars": 60000,
+        "result": "text"
+      },
+      {
+        "name": "code_review_get",
+        "title": "Get code review results",
+        "description": "Reads a review iteration, waiting up to wait_seconds (0..90, default 60) for a terminal status. Returns immediately with needsContext: true when the status is NEEDS_CONTEXT (call code_review_context_prepare right away). Returns structured results and Markdown. If still running, call again.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "review_id": {
+              "type": "string",
+              "description": "review_id returned by code_review_submit."
+            },
+            "iteration": {
+              "type": "integer",
+              "description": "Iteration number (default latest).",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "wait_seconds": {
+              "type": "integer",
+              "description": "Seconds to wait for a terminal status or an open context request (NEEDS_CONTEXT with an AWAITING round), 0..90 (default 60).",
+              "minimum": 0,
+              "maximum": 90
+            }
+          },
+          "required": ["review_id"],
+          "additionalProperties": false
+        },
+        "timeoutSeconds": 150,
+        "maxResultChars": 60000,
+        "result": "text"
+      },
+      {
+        "name": "code_review_suppress",
+        "title": "Suppress a code review finding",
+        "description": "Suppresses one finding for the rest of the review session. Only on the user’s explicit request, with a reason.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "review_id": {
+              "type": "string",
+              "description": "The review the finding belongs to."
+            },
+            "finding_id": {
+              "type": "string",
+              "description": "The finding to suppress, f-<16 hex>."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Why the user suppresses it (≤ 500 chars)."
+            }
+          },
+          "required": ["review_id", "finding_id"],
+          "additionalProperties": false
+        },
+        "timeoutSeconds": 60,
+        "maxResultChars": 60000,
+        "result": "text"
+      },
+      {
+        "name": "code_review_context_prepare",
+        "title": "Prepare context the reviewer requested",
+        "description": "Call when code_review_get reports NEEDS_CONTEXT. Reads the open context round (read-only GET), answers each request from the local repository (refuses paths outside the repo, under .git/ or secret-like; redacts secrets; checks limits) and stages the response. Nothing is sent. Pass decline (request ids) for anything the user does not want shared, and extra_files only when the user asks. Returns prepared_id, payload_digest, summaryMarkdown and expiresAt. Show summaryMarkdown to the user, then call code_review_context_submit.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "repo_path": {
+              "type": "string",
+              "description": "Absolute path of the git repository root."
+            },
+            "review_id": {
+              "type": "string",
+              "description": "review_id whose iteration is NEEDS_CONTEXT."
+            },
+            "iteration": {
+              "type": "integer",
+              "description": "Iteration number (default latest).",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "include_uncommitted": {
+              "type": "boolean",
+              "description": "Read files from the working tree instead of HEAD (default false)."
+            },
+            "decline": {
+              "type": "array",
+              "description": "Request ids the user does not want shared; they are sent as declined.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "extra_files": {
+              "type": "array",
+              "description": "Up to 8 extra repo-relative files, only when the user asks to share them.",
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 8
+            }
+          },
+          "required": ["repo_path", "review_id"],
+          "additionalProperties": false
+        },
+        "timeoutSeconds": 120,
+        "maxResultChars": 60000,
+        "result": "text"
+      },
+      {
+        "name": "code_review_context_submit",
+        "title": "Send staged context to Kiro Reviewer",
+        "description": "Sends context staged by code_review_context_prepare to the Kiro Reviewer service. Pass prepared_id and payload_digest exactly as returned by context_prepare.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prepared_id": {
+              "type": "string",
+              "description": "prepared_id returned by code_review_context_prepare."
+            },
+            "payload_digest": {
+              "type": "string",
+              "description": "payload_digest returned by code_review_context_prepare."
+            }
+          },
+          "required": ["prepared_id", "payload_digest"],
+          "additionalProperties": false
+        },
+        "timeoutSeconds": 60,
+        "maxResultChars": 60000,
+        "result": "text"
+      },
+      {
+        "name": "code_review_status",
+        "title": "Check Kiro Reviewer setup",
+        "description": "Read-only. Reports the endpoint and credential situation as the reviewer tools see it, and checks the service with one read. Call it when another code_review tool fails with a credential or config error, and show the result to the user.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "timeoutSeconds": 60,
+        "maxResultChars": 60000,
+        "result": "text"
+      }
+    ]
+  }
+}

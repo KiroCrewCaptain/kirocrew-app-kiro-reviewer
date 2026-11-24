@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-bundle/
+cdk.out/
+coverage/
+build/
+build-logs/
+cdk-outputs.json
+e2e-report.json
+.eslintcache
+__pycache__/
+.pytest_cache/

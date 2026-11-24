@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
+# Launcher for the Kiro Reviewer stdio MCP server.
+# kiro-cli expands "~" in the command but not in args, so this script locates the app directory itself.
+set -euo pipefail
+
+# Crew's shared MCP gateway starts servers with Crew's own environment, whose PATH can lack Homebrew or nvm.
+if ! command -v node >/dev/null 2>&1; then
+  for dir in /opt/homebrew/bin /usr/local/bin "$HOME"/.nvm/versions/node/*/bin; do
+    if [ -x "$dir/node" ]; then
+      PATH="$dir:$PATH"
+      export PATH
+      break
+    fi
+  done
+fi
+if ! command -v node >/dev/null 2>&1; then
+  echo "kiro-code-reviewer: node is not on PATH (Node.js >= 22 is required)" >&2
+  exit 1
+fi
+
+node_major="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+if [ "${node_major}" -lt 22 ]; then
+  echo "kiro-code-reviewer: Node.js >= 22 is required (found $(node --version 2>/dev/null || echo unknown))" >&2
+  exit 1
+fi
+
+app_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+exec node "${app_dir}/dist/server.mjs"

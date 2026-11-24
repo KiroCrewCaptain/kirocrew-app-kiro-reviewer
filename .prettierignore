@@ -1,0 +1,12 @@
+dist
+coverage
+build
+build-logs
+node_modules
+package-lock.json
+
+# Local experiment driver scratch files (not part of the app or tests).
+.kcr-exp-*.mjs
+.mypy_cache/
+.pytest_cache/
+__pycache__/
