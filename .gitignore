@@ -10,3 +10,11 @@ e2e-report.json
 .eslintcache
 __pycache__/
 .pytest_cache/
+# Install-time state the gateway writes into an installed copy.
+data/
+.app_secret
+installed.json
+app-crons.json
+# Capture scratch.
+*.raw.png
+*.webm
