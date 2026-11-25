@@ -4,8 +4,25 @@
   "displayName": "Kiro Reviewer",
   "description": "Pre-PR AI code review: prepares a redacted diff locally, sends it to the Kiro Reviewer service when you ask for a review, and shows findings with cross-iteration tracking.",
   "author": "Kiro",
+  "license": "Apache-2.0",
+  "tags": ["code-review", "developer-tools", "git", "code-quality"],
+  "highlights": [
+    "Shows exactly what will be sent before anything leaves your machine",
+    "Redacts secrets from the diff locally",
+    "Findings appear in chat and on a page, under the changed lines they are about",
+    "Tracks findings across review iterations until they are resolved"
+  ],
   "iconPath": "assets/icon.png",
   "iconPathDark": "assets/icon-dark.png",
+  "screenshots": [
+    "docs/media/hero-light.png",
+    "docs/media/use-case-1-light.png",
+    "docs/media/use-case-2-light.png",
+    "docs/media/use-case-3-light.png"
+  ],
+  "screenshotsDark": ["docs/media/hero-dark.png"],
+  "heroImage": "docs/media/hero-light.png",
+  "heroImageDark": "docs/media/hero-dark.png",
   "skills": ["skills/code-review"],
   "mcpServers": {
     "code-reviewer": {
