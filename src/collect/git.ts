@@ -412,8 +412,8 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
   }
   if (!/^[0-9a-f]{40}$/.test(mergeBase)) throw new ToolError('NO_MERGE_BASE', 'Could not compute the merge-base.');
 
-  // Step 5: diff from the merge-base.
-  const diffArgs = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-U3', '-M', mergeBase];
+  // Step 5: diff from the merge-base. Whole-file hunks: -U2147483647 makes git emit each file in full.
+  const diffArgs = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '-U2147483647', '-M', mergeBase];
   if (!input.includeUncommitted) diffArgs.push(headSha);
   diffArgs.push('--');
   let diff: string;

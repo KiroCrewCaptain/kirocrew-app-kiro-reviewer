@@ -110,6 +110,22 @@ describe('collectRepo', () => {
     expect(out.rules.reviewMd).toContain('(base)');
   });
 
+  it('sends whole-file hunks: unchanged lines far from the change are in the diff', async () => {
+    const r = repo();
+    const lines = Array.from({ length: 30 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add big');
+    git(r, 'branch', 'base2');
+    lines[14] = 'export const v15 = "changed";';
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'commit', '-q', '-am', 'change line 15');
+    const c = await collectRepo({ repoPath: r, base: 'base2', includeUncommitted: false, contextFiles: [] });
+    expect(c.diff).toContain(' export const v1 = 1;');
+    expect(c.diff).toContain(' export const v30 = 30;');
+    expect(c.diff.match(/^@@ /gm)).toHaveLength(1);
+  });
+
   it('includeUncommitted diffs the working tree; otherwise only commits', async () => {
     const r = repo();
     write(r, 'src/users.ts', 'export const a = 1;\nexport const b = "x" + req.query.id;\nexport const dirty = true;\n');
