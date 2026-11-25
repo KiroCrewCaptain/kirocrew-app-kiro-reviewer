@@ -8,7 +8,7 @@ import { toErrorResult } from '../src/errors.js';
 import { STAGING_TTL_MS } from '../src/staging.js';
 import { prepareTool } from '../src/tools/prepare.js';
 import { submitTool } from '../src/tools/submit.js';
-import { fakeClock, git, jsonResponse, makeDeps, makeRepo, rm, tempDir, write, type FakeClock } from './helpers.js';
+import { fakeClock, jsonResponse, makeDeps, makeRepo, rm, tempDir, type FakeClock } from './helpers.js';
 
 let repo: string;
 let dataDir: string;
