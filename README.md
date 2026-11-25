@@ -2,7 +2,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.png">
-  <img src="docs/media/hero-light.png" alt="The Kiro Reviewer page in Kiro Crew showing a list of reviews and one review's findings placed under the changed lines of the diff">
+  <img src="docs/media/hero-light.png" alt="The Kiro Reviewer page showing a review of the feature/order-lookup branch, with the finding Refund route can be called by anyone placed under the line of the diff it is about">
 </picture>
 
 **Get an AI review of your changes before you open the pull request.**
@@ -36,35 +36,38 @@ do with each one.
 
 You are on a feature branch and want feedback before you ask a teammate. In a Kiro Crew chat you ask the agent to review
 your changes against your main branch. The agent shows what it will send. You say yes, and the findings appear in the
-chat, sorted by how serious they are.
+chat, sorted by how serious they are. The **Kiro Reviewer** page lists every review with its branch, how long ago it
+ran and what it found, and **Open review** shows the details.
 
-![The chat card for a finished review, with the number of findings by severity and the top findings listed](docs/media/use-case-1-light.png)
+![The Kiro Reviewer page listing three reviews of a shop's code, each with its branch name, how long ago it ran and its finding counts](docs/media/use-case-1-light.png)
 
 ### 2. Fix a finding with the agent
 
 A review reports a real problem, such as user input put straight into a database query. On the **Kiro Reviewer** page you
-open the review, find the finding under the line it is about, and choose **Fix with agent**. That opens a chat in
+open the review and find the finding under the line it is about. Choose **Fix with agent**. That opens a chat in
 which the agent first checks the finding against your code and only then changes it. After you fix it you ask for the
 review again, and the finding shows as resolved.
 
-![The Kiro Reviewer page with one finding open under its diff line and the Fix with agent button](docs/media/use-case-2-light.png)
+![The finding Refund route can be called by anyone, high severity and blocking, with its explanation, a suggested fix and the Fix with agent and Copy prompt buttons](docs/media/use-case-2-light.png)
 
 ### 3. Set aside a finding that is wrong
 
-The reviewer sometimes flags something that is fine in your situation. Choose **Suppress** on the finding, give a short
-reason, and it stops counting for the rest of that review. You can also mark a finding with 👍 or 👎 so the reviewer team
-knows whether it helped.
+The reviewer sometimes flags something that is fine in your situation. Choose **Suppress…** on the finding, type a
+short reason, and choose **Suppress finding**. It stops counting for the rest of that review. Under **Was this
+helpful?** you can also choose **👍 Yes** or **👎 No** so the reviewer team knows whether it helped.
 
-![A finding with the suppress reason box open and the thumbs up and thumbs down buttons](docs/media/use-case-3-light.png)
+![The low-severity finding CSV export does not guard against spreadsheet formulas, with the suppress box open and the reason The export is only used by staff on trusted machines typed in](docs/media/use-case-3-light.png)
 
 ## Watch it
 
-![A walkthrough: asking for a review in chat, reading the findings on the Kiro Reviewer page, and fixing one with the agent](docs/media/walkthrough.gif)
+![A walkthrough of the Kiro Reviewer page: the review list, one review's summary, findings under their diff lines, the Fix with agent button, and suppressing a finding with a reason](docs/media/walkthrough.gif)
 
 [Watch the walkthrough as a video (MP4)](docs/media/walkthrough.mp4).
 
-<sub>Recorded from a real Kiro Crew on a throwaway home with made-up demo data. Agent replies came from a live model
-and will vary. Waits for replies are shortened.</sub>
+<sub>Recorded from a real Kiro Crew (release 0.13.0) on a throwaway home with this repository installed. The reviews
+are made up: a capture-only build of the page's backend answered from demo data
+([`capture/stub_bff.mjs`](capture/stub_bff.mjs)) instead of the Kiro review service, so no review was sent anywhere.
+The recording shows the page only, not a chat with the agent.</sub>
 
 ## Install
 
@@ -104,7 +107,7 @@ missing.
    answer each). The agent shows what it would share. Agree, or tell it to decline any file.
 4. Read the findings in the chat, or open **Kiro Reviewer** in the sidebar and select the review to see each finding under
    its diff line.
-5. For each finding, choose **Fix with agent**, **Copy prompt**, or **Suppress** with a reason. **Copy for CR/PR** copies
+5. For each finding, choose **Fix with agent**, **Copy prompt**, or **Suppress…** with a reason. **Copy for CR/PR** copies
    a short summary for your pull request.
 6. After you change your code, ask the agent to send the review again. The page shows what is new, what is resolved
    and what is still open.
@@ -509,9 +512,14 @@ The pictures and the recording come from a real, isolated Kiro Crew gateway driv
 After any change to what the app shows:
 
 ```bash
-python capture/capture.py --kirocrew /path/to/KiroCrew
+npx -y npm@11.6.2 ci
+capture/run.sh /path/to/KiroCrew
 python capture/check_readme.py
 ```
+
+`capture/run.sh` builds a scratch copy of the app whose page backend answers from the demo data in
+`capture/stub_bff.mjs` (`capture/demo-backend.mjs`), then runs `capture/capture.py` on it and writes the media
+here.
 
 Then look at every image and at a few frames of the video before committing (see [CHECKLIST.md](CHECKLIST.md)).
 

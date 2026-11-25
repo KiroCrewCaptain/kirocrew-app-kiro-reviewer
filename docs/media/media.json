@@ -1,0 +1,86 @@
+{
+  "app": "kiro-code-reviewer",
+  "captured_at": "2026-11-25T04:40:53Z",
+  "app_commit": "591d1508b34c087faad624519509aa2cfa0cf6a3",
+  "kirocrew_commit": "release 0.13.0 (installed app, no checkout)",
+  "kirocrew_tree_dirty": null,
+  "gateway": "isolated temporary home, approval=reads; a freshly seeded gateway for the stub screenshots, one for the live ones and one for the walkthrough",
+  "data": "fictional, seeded through the app's HTTP API (capture/scenes.json)",
+  "agent_backend": {
+    "live": [],
+    "live_model": null,
+    "stub": "Kiro Crew's offline stub ACP backend (capture/stub_backend.py) for every other scene; no chat reply is shown from it",
+    "credit_reading": "the browser answers the top bar's credit readout (/api/sessions/usage) with \"no reading\", so no account balance or email can be shown"
+  },
+  "note": "This repository was installed into a throwaway Kiro Crew home, trusted and enabled. Its page backend was a capture-only build (capture/demo-backend.mjs) that answers the review service's calls in-process from capture/stub_bff.mjs, which holds made-up reviews of a made-up shop. No review was sent to the real Kiro service.",
+  "data_notes": [
+    "The reviews, findings and diffs come from capture/stub_bff.mjs; times are relative to the moment of capture."
+  ],
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "device_scale": 2,
+  "screenshots": [
+    {
+      "file": "hero-dark.png",
+      "name": "hero",
+      "theme": "dark",
+      "bytes": 330513,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Kiro Reviewer page showing a review of the feature/order-lookup branch, with the finding Refund route can be called by anyone placed under the line of the diff it is about"
+    },
+    {
+      "file": "hero-light.png",
+      "name": "hero",
+      "theme": "light",
+      "bytes": 317389,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Kiro Reviewer page showing a review of the feature/order-lookup branch, with the finding Refund route can be called by anyone placed under the line of the diff it is about"
+    },
+    {
+      "file": "use-case-1-light.png",
+      "name": "use-case-1",
+      "theme": "light",
+      "bytes": 276475,
+      "width": 1600,
+      "height": 1000,
+      "alt": "The Kiro Reviewer page listing three reviews of a shop's code, each with its branch name, how long ago it ran and its finding counts"
+    },
+    {
+      "file": "use-case-2-light.png",
+      "name": "use-case-2",
+      "theme": "light",
+      "bytes": 140115,
+      "width": 1600,
+      "height": 531,
+      "alt": "The finding Refund route can be called by anyone, high severity and blocking, with its explanation, a suggested fix and the Fix with agent and Copy prompt buttons"
+    },
+    {
+      "file": "use-case-3-light.png",
+      "name": "use-case-3",
+      "theme": "light",
+      "bytes": 159889,
+      "width": 1600,
+      "height": 711,
+      "alt": "The low-severity finding CSV export does not guard against spreadsheet formulas, with the suppress box open and the reason The export is only used by staff on trusted machines typed in"
+    }
+  ],
+  "walkthrough": {
+    "shortened_waits_s": [],
+    "mp4": {
+      "file": "walkthrough.mp4",
+      "bytes": 445339
+    },
+    "gif": {
+      "file": "walkthrough.gif",
+      "bytes": 2531498,
+      "width": 960,
+      "fps": 10
+    },
+    "theme": "light",
+    "alt": "A walkthrough of the Kiro Reviewer page: the review list, one review's summary, findings under their diff lines, the Fix with agent button, and suppressing a finding with a reason"
+  }
+}

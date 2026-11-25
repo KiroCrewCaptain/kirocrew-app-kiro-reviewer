@@ -1,14 +1,10 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-// Stand-in for the Kiro BFF used only to photograph the Crew page: it answers the review operations over
-// Smithy RPC v2 CBOR with made-up reviews of a made-up shop. Usage (from the repository root, after `npm ci`):
-//   node capture/stub_bff.mjs <port> <cert.pem> <key.pem>
-import { createServer } from 'node:https';
-import { readFileSync } from 'node:fs';
+// Stand-in for the Kiro BFF, used only to photograph the Crew page: it answers the review operations over
+// Smithy RPC v2 CBOR with made-up reviews of a made-up shop. capture/demo-backend.mjs bundles it into the page
+// backend; see capture/run.sh.
 import { cbor } from '@smithy/core/cbor';
-
-const [port, certPath, keyPath] = process.argv.slice(2);
 const HOUR = 3_600_000;
 const now = Date.now();
 const ago = (h) => now - h * HOUR;
@@ -382,22 +378,22 @@ function notFound() {
   return Object.assign(new Error('not found'), { status: 404, type: 'ResourceNotFoundException' });
 }
 
-const server = createServer({ cert: readFileSync(certPath), key: readFileSync(keyPath) }, (req, res) => {
-  const chunks = [];
-  req.on('data', (c) => chunks.push(c));
-  req.on('end', () => {
-    const op = req.url.split('/').pop();
-    const send = (status, obj) => {
-      res.writeHead(status, { 'content-type': 'application/cbor', 'smithy-protocol': 'rpc-v2-cbor' });
-      res.end(Buffer.from(cbor.serialize(obj)));
-    };
+/** A `fetch` that answers the Kiro BFF's review operations from the demo data above. */
+export function stubFetch() {
+  return async (input, init = {}) => {
+    const op = String(input).split('/').pop();
+    const reply = (status, obj) =>
+      new Response(cbor.serialize(obj), {
+        status,
+        headers: { 'content-type': 'application/cbor', 'smithy-protocol': 'rpc-v2-cbor' },
+      });
     try {
-      const input = chunks.length ? cbor.deserialize(Buffer.concat(chunks)) : {};
-      if (!handlers[op]) return send(400, { __type: 'ValidationException', message: `no such operation ${op}` });
-      send(200, handlers[op](input));
+      const bytes = init.body ? new Uint8Array(init.body) : new Uint8Array();
+      const args = bytes.length ? cbor.deserialize(bytes) : {};
+      if (!handlers[op]) return reply(400, { __type: 'ValidationException', message: `no such operation ${op}` });
+      return reply(200, handlers[op](args));
     } catch (e) {
-      send(e.status ?? 500, { __type: e.type ?? 'InternalServerException', message: String(e.message) });
+      return reply(e.status ?? 500, { __type: e.type ?? 'InternalServerException', message: String(e.message) });
     }
-  });
-});
-server.listen(Number(port), '127.0.0.1', () => process.stderr.write(`stub BFF on https://127.0.0.1:${port}\n`));
+  };
+}
