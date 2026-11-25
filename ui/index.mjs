@@ -1599,8 +1599,21 @@ function useApiKey(api, notify) {
     [api, notify],
   );
 
+  const toggleEditing = useCallback((v) => {
+    setErr('');
+    setEditing(v);
+  }, []);
   const set = Boolean(status && status.set);
-  return { status, err, busy, editing, setEditing, run, set, fromEnv: set && status.source === 'env' };
+  return {
+    status,
+    err,
+    busy,
+    editing,
+    setEditing: toggleEditing,
+    run,
+    set,
+    fromEnv: set && status.source === 'env',
+  };
 }
 
 /** Compact key status for the header when a key is set. */
