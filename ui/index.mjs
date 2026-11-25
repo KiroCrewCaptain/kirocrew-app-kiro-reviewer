@@ -175,7 +175,10 @@ const CSS = `
 .kcr-gate-f{display:flex;gap:10px;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#27272a)}
 .kcr-gate-f .kcr-sev{min-width:0}
 .kcr-gate-more{margin-top:8px;color:var(--muted,#7f7f88);font-size:12px}
-.kcr-key{margin-top:28px;padding:16px 20px}
+.kcr-key{margin-bottom:20px;padding:16px 20px}
+.kcr-keybar{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#7f7f88)}
+.kcr-keybar .kcr-mono{color:var(--text,#e4e4e7)}
+.kcr-link{background:none;border:0;padding:0;cursor:pointer;color:var(--kcr-accent-text);font-size:12px;text-decoration:underline}
 .kcr-key-h{display:flex;align-items:center;gap:10px}
 .kcr-key-t{font-size:15px;font-weight:600;color:var(--text-strong,#fafafa)}
 .kcr-key-p{color:var(--muted,#7f7f88);font-size:12px;margin:6px 0 12px}
@@ -1555,10 +1558,9 @@ function ReviewDetail({ review, entry, onIteration, api, onChanged, notify, sent
 
 /* ---------- page ---------- */
 
-/** Saves the Kiro API key the chat tools use. The key is never read back; only its last four characters show. */
-function ApiKeyCard({ api, notify }) {
+/** Kiro API key state for the chat tools. The key is never read back; only its last four characters show. */
+function useApiKey(api, notify) {
   const [status, setStatus] = useState(null);
-  const [value, setValue] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
@@ -1584,11 +1586,12 @@ function ApiKeyCard({ api, notify }) {
       setErr('');
       try {
         setStatus(await api.post(`${API}/${path}`, body));
-        setValue('');
         setEditing(false);
         notify(done);
+        return true;
       } catch (e) {
         setErr(parseApiError(e));
+        return false;
       } finally {
         setBusy(false);
       }
@@ -1596,9 +1599,43 @@ function ApiKeyCard({ api, notify }) {
     [api, notify],
   );
 
-  if (!status && !err) return null;
+  const toggleEditing = useCallback((v) => {
+    setErr('');
+    setEditing(v);
+  }, []);
   const set = Boolean(status && status.set);
-  const fromEnv = set && status.source === 'env';
+  return {
+    status,
+    err,
+    busy,
+    editing,
+    setEditing: toggleEditing,
+    run,
+    set,
+    fromEnv: set && status.source === 'env',
+  };
+}
+
+/** Compact key status for the header when a key is set. */
+function ApiKeyBar({ apiKey }) {
+  const { status, fromEnv, editing, setEditing } = apiKey;
+  return h(
+    'span',
+    { className: 'kcr-keybar', title: fromEnv ? 'From the KIRO_API_KEY environment variable' : undefined },
+    [
+      h('span', { key: 'l' }, 'API key'),
+      h('span', { key: 'm', className: 'kcr-mono' }, `ksk_••••${status.last4 || ''}`),
+      !fromEnv && !editing
+        ? h('button', { key: 'c', className: 'kcr-link', onClick: () => setEditing(true) }, 'Change')
+        : null,
+    ],
+  );
+}
+
+/** Shown at the top of the page while no key is set, or after "Change" in the header. */
+function ApiKeyCard({ apiKey }) {
+  const { status, err, busy, editing, setEditing, run, set, fromEnv } = apiKey;
+  const [value, setValue] = useState('');
   const form = !set || editing;
 
   return h('section', { className: 'kcr-card kcr-key', 'aria-label': 'Kiro API key' }, [
@@ -1657,7 +1694,7 @@ function ApiKeyCard({ api, notify }) {
             style: set ? { marginTop: 8 } : undefined,
             onSubmit: (e) => {
               e.preventDefault();
-              run('api-key', { key: value }, 'Key saved');
+              run('api-key', { key: value }, 'Key saved').then((ok) => ok && setValue(''));
             },
           },
           [
@@ -1729,6 +1766,9 @@ export default function KiroCodeReviewer() {
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(''), 3500);
   }, []);
+  const apiKey = useApiKey(api, notify);
+  const keyLoaded = Boolean(apiKey.status || apiKey.err);
+  const keyCard = keyLoaded && (!apiKey.set || apiKey.editing) ? h(ApiKeyCard, { key: 'ak', apiKey }) : null;
 
   const linked = useMemo(() => {
     const id = new URLSearchParams(window.location.search).get('review');
@@ -1917,6 +1957,7 @@ export default function KiroCodeReviewer() {
         ),
       ]),
       h('span', { key: 'sp', className: 'kcr-spacer' }),
+      apiKey.set ? h(ApiKeyBar, { key: 'kb', apiKey }) : null,
       status && status.kiroRegion
         ? h(
             'select',
@@ -1970,6 +2011,7 @@ export default function KiroCodeReviewer() {
           { key: 'm', className: 'kcr-main' },
           selected
             ? [
+                keyCard,
                 h('button', { key: 'back', className: 'kcr-btn kcr-back', onClick: closeReview }, '← All reviews'),
                 error && signIn
                   ? h(SignInBanner, { key: 'e', onSignIn: goSignIn })
@@ -2001,6 +2043,7 @@ export default function KiroCodeReviewer() {
                     : null,
               ]
             : [
+                keyCard,
                 error && signIn
                   ? h(SignInBanner, { key: 'e', onSignIn: goSignIn })
                   : error
@@ -2029,7 +2072,6 @@ export default function KiroCodeReviewer() {
                   hasMore: listHasMore,
                   loadedAt,
                 }),
-                h(ApiKeyCard, { key: 'ak', api, notify }),
               ],
         ),
     toast ? h('div', { key: 'toast', className: 'kcr-toast', role: 'status' }, toast) : null,
