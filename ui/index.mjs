@@ -42,7 +42,6 @@ const CSS = `
 .kcr button{font:inherit;color:inherit}
 .kcr-head{display:flex;align-items:center;gap:12px;padding:16px 24px;border-bottom:1px solid var(--border,#27272a)}
 .kcr-region{width:auto;cursor:pointer}
-.kcr-logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#9046ff,#c2a0fd);display:grid;place-items:center;font-weight:700;color:#fff;box-shadow:0 0 18px #9046ff55}
 .kcr-title{font-size:18px;font-weight:600;color:var(--text-strong,#fafafa);letter-spacing:-.2px}
 .kcr-sub{color:var(--muted,#7f7f88);font-size:12px}
 .kcr-spacer{flex:1}
@@ -176,9 +175,9 @@ const CSS = `
 .kcr-gate-f .kcr-sev{min-width:0}
 .kcr-gate-more{margin-top:8px;color:var(--muted,#7f7f88);font-size:12px}
 .kcr-key{margin-bottom:20px;padding:16px 20px}
-.kcr-keybar{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#7f7f88)}
-.kcr-keybar .kcr-mono{color:var(--text,#e4e4e7)}
-.kcr-link{background:none;border:0;padding:0;cursor:pointer;color:var(--kcr-accent-text);font-size:12px;text-decoration:underline}
+.kcr-tabs{display:flex;gap:2px;padding:3px;border:1px solid var(--border,#27272a);border-radius:12px}
+.kcr .kcr-tab{background:none;border:1px solid transparent;border-radius:9px;padding:6px 14px;font-size:13px;cursor:pointer;color:var(--muted,#7f7f88)}
+.kcr .kcr-tab.on{background:var(--bg-elevated,#1a1d25);border-color:var(--border,#27272a);color:var(--kcr-accent-text);font-weight:600}
 .kcr-key-h{display:flex;align-items:center;gap:10px}
 .kcr-key-t{font-size:15px;font-weight:600;color:var(--text-strong,#fafafa)}
 .kcr-key-p{color:var(--muted,#7f7f88);font-size:12px;margin:6px 0 12px}
@@ -1616,20 +1615,48 @@ function useApiKey(api, notify) {
   };
 }
 
-/** Compact key status for the header when a key is set. */
-function ApiKeyBar({ apiKey }) {
-  const { status, fromEnv, editing, setEditing } = apiKey;
+const VIEWS = [
+  ['reviews', 'Reviews'],
+  ['settings', 'Settings'],
+];
+
+function ViewTabs({ value, onChange }) {
   return h(
-    'span',
-    { className: 'kcr-keybar', title: fromEnv ? 'From the KIRO_API_KEY environment variable' : undefined },
-    [
-      h('span', { key: 'l' }, 'API key'),
-      h('span', { key: 'm', className: 'kcr-mono' }, `ksk_••••${status.last4 || ''}`),
-      !fromEnv && !editing
-        ? h('button', { key: 'c', className: 'kcr-link', onClick: () => setEditing(true) }, 'Change')
-        : null,
-    ],
+    'div',
+    { className: 'kcr-tabs', role: 'tablist', 'aria-label': 'Kiro Reviewer views' },
+    VIEWS.map(([id, label]) =>
+      h(
+        'button',
+        {
+          key: id,
+          role: 'tab',
+          'aria-selected': value === id,
+          className: `kcr-tab${value === id ? ' on' : ''}`,
+          onClick: () => onChange(id),
+        },
+        label,
+      ),
+    ),
   );
+}
+
+function RegionCard({ region, disabled, onChange }) {
+  return h('section', { className: 'kcr-card kcr-key', 'aria-label': 'Kiro region' }, [
+    h('div', { key: 'h', className: 'kcr-key-h' }, h('span', { className: 'kcr-key-t' }, 'Kiro region')),
+    h('p', { key: 'p', className: 'kcr-key-p' }, 'The region whose reviews this page shows.'),
+    h(
+      'select',
+      {
+        key: 's',
+        className: 'kcr-input kcr-region',
+        value: region,
+        disabled,
+        onChange: (e) => onChange(e.target.value),
+        'aria-label': 'Kiro region',
+      },
+      KIRO_REGIONS.map(([id, label]) => h('option', { key: id, value: id }, `${label} · ${id}`)),
+    ),
+  ]);
 }
 
 /** Shown at the top of the page while no key is set, or after "Change" in the header. */
@@ -1768,7 +1795,9 @@ export default function KiroCodeReviewer() {
   }, []);
   const apiKey = useApiKey(api, notify);
   const keyLoaded = Boolean(apiKey.status || apiKey.err);
-  const keyCard = keyLoaded && (!apiKey.set || apiKey.editing) ? h(ApiKeyCard, { key: 'ak', apiKey }) : null;
+  const [view, setView] = useState('reviews');
+  // Reviews view shows the key card only as a prompt while no key is set; Settings always shows it.
+  const keyPrompt = keyLoaded && !apiKey.set ? h(ApiKeyCard, { key: 'ak', apiKey }) : null;
 
   const linked = useMemo(() => {
     const id = new URLSearchParams(window.location.search).get('review');
@@ -1947,7 +1976,6 @@ export default function KiroCodeReviewer() {
 
   return h('div', { className: 'kcr' }, [
     h('header', { key: 'hd', className: 'kcr-head' }, [
-      h('div', { key: 'l', className: 'kcr-logo' }, 'K'),
       h('div', { key: 't' }, [
         h('div', { key: 'a', className: 'kcr-title' }, 'Kiro Reviewer'),
         h(
@@ -1957,123 +1985,122 @@ export default function KiroCodeReviewer() {
         ),
       ]),
       h('span', { key: 'sp', className: 'kcr-spacer' }),
-      apiKey.set ? h(ApiKeyBar, { key: 'kb', apiKey }) : null,
-      status && status.kiroRegion
+      view === 'reviews'
         ? h(
-            'select',
+            'button',
             {
-              key: 'kr',
-              className: 'kcr-input kcr-region',
-              value: status.kiroRegion,
-              disabled: switchingRegion,
-              onChange: (e) => changeRegion(e.target.value),
-              'aria-label': 'Kiro region',
-              title: 'Kiro region whose reviews this page shows',
+              key: 'rf',
+              className: 'kcr-btn',
+              onClick: () => {
+                loadList();
+                loadReview();
+                loadSent();
+              },
             },
-            KIRO_REGIONS.map(([id, label]) => h('option', { key: id, value: id }, `${label} · ${id}`)),
+            '↻ Refresh',
           )
         : null,
-      h(
-        'button',
-        {
-          key: 'rf',
-          className: 'kcr-btn',
-          onClick: () => {
-            loadList();
-            loadReview();
-            loadSent();
-          },
-        },
-        '↻ Refresh',
-      ),
+      h(ViewTabs, { key: 'tabs', value: view, onChange: setView }),
     ]),
-    !configured
-      ? h(
-          'div',
-          { key: 'cfg', className: 'kcr-main' },
-          needsKiroSignIn(status.code)
-            ? h(SignInBanner, { onSignIn: goSignIn })
-            : h(
-                'div',
-                { className: 'kcr-banner warn' },
-                h('div', null, [
-                  h('b', { key: 'b' }, 'Service endpoint is not configured'),
-                  h(
-                    'span',
-                    { key: 's', style: { color: 'var(--muted,#7f7f88)' } },
-                    `${status.message} Set "endpoint" in the app's data/config.json.`,
-                  ),
-                ]),
-              ),
-        )
-      : h(
-          'main',
-          { key: 'm', className: 'kcr-main' },
-          selected
-            ? [
-                keyCard,
-                h('button', { key: 'back', className: 'kcr-btn kcr-back', onClick: closeReview }, '← All reviews'),
-                error && signIn
-                  ? h(SignInBanner, { key: 'e', onSignIn: goSignIn })
-                  : error
-                    ? h(
-                        'div',
-                        { key: 'e', className: 'kcr-banner bad' },
-                        h('div', null, [
-                          h('b', { key: 'b' }, 'Could not load this review'),
-                          h('span', { key: 's', style: { color: 'var(--muted,#7f7f88)' } }, error),
-                        ]),
-                      )
-                    : null,
-                review
-                  ? h(ReviewDetail, {
-                      key: 'd',
-                      review,
-                      entry,
-                      onIteration: setIteration,
-                      api,
-                      onChanged: loadReview,
-                      notify,
-                      sent,
-                      sentError,
-                      openChat,
-                    })
-                  : !error
-                    ? h('div', { key: 'x', className: 'kcr-empty' }, 'Loading review…')
-                    : null,
-              ]
-            : [
-                keyCard,
-                error && signIn
-                  ? h(SignInBanner, { key: 'e', onSignIn: goSignIn })
-                  : error
-                    ? h(
-                        'div',
-                        { key: 'e', className: 'kcr-banner bad' },
-                        h('div', null, [
-                          h('b', { key: 'b' }, 'Could not load your reviews'),
-                          h('span', { key: 's', style: { color: 'var(--muted,#7f7f88)' } }, error),
-                        ]),
-                      )
-                    : null,
-                h(ReviewOverview, {
-                  key: 'ov',
-                  reviews,
-                  summaries,
-                  previews,
-                  expanded,
-                  onExpand: setExpanded,
-                  onOpen: openReview,
-                  onTrack: track,
-                  trackError,
-                  tracking,
-                  source: listSource,
-                  loading: !loadedAt && !error,
-                  hasMore: listHasMore,
-                  loadedAt,
-                }),
-              ],
-        ),
+    view === 'settings'
+      ? h('main', { key: 'set', className: 'kcr-main' }, [
+          status && status.kiroRegion
+            ? h(RegionCard, {
+                key: 'rg',
+                region: status.kiroRegion,
+                disabled: switchingRegion,
+                onChange: changeRegion,
+              })
+            : null,
+          keyLoaded ? h(ApiKeyCard, { key: 'ak', apiKey }) : null,
+        ])
+      : !configured
+        ? h(
+            'div',
+            { key: 'cfg', className: 'kcr-main' },
+            needsKiroSignIn(status.code)
+              ? h(SignInBanner, { onSignIn: goSignIn })
+              : h(
+                  'div',
+                  { className: 'kcr-banner warn' },
+                  h('div', null, [
+                    h('b', { key: 'b' }, 'Service endpoint is not configured'),
+                    h(
+                      'span',
+                      { key: 's', style: { color: 'var(--muted,#7f7f88)' } },
+                      `${status.message} Set "endpoint" in the app's data/config.json.`,
+                    ),
+                  ]),
+                ),
+          )
+        : h(
+            'main',
+            { key: 'm', className: 'kcr-main' },
+            selected
+              ? [
+                  keyPrompt,
+                  h('button', { key: 'back', className: 'kcr-btn kcr-back', onClick: closeReview }, '← All reviews'),
+                  error && signIn
+                    ? h(SignInBanner, { key: 'e', onSignIn: goSignIn })
+                    : error
+                      ? h(
+                          'div',
+                          { key: 'e', className: 'kcr-banner bad' },
+                          h('div', null, [
+                            h('b', { key: 'b' }, 'Could not load this review'),
+                            h('span', { key: 's', style: { color: 'var(--muted,#7f7f88)' } }, error),
+                          ]),
+                        )
+                      : null,
+                  review
+                    ? h(ReviewDetail, {
+                        key: 'd',
+                        review,
+                        entry,
+                        onIteration: setIteration,
+                        api,
+                        onChanged: loadReview,
+                        notify,
+                        sent,
+                        sentError,
+                        openChat,
+                      })
+                    : !error
+                      ? h('div', { key: 'x', className: 'kcr-empty' }, 'Loading review…')
+                      : null,
+                ]
+              : [
+                  keyPrompt,
+                  error && signIn
+                    ? h(SignInBanner, { key: 'e', onSignIn: goSignIn })
+                    : error
+                      ? h(
+                          'div',
+                          { key: 'e', className: 'kcr-banner bad' },
+                          h('div', null, [
+                            h('b', { key: 'b' }, 'Could not load your reviews'),
+                            h('span', { key: 's', style: { color: 'var(--muted,#7f7f88)' } }, error),
+                          ]),
+                        )
+                      : null,
+                  h(ReviewOverview, {
+                    key: 'ov',
+                    reviews,
+                    summaries,
+                    previews,
+                    expanded,
+                    onExpand: setExpanded,
+                    onOpen: openReview,
+                    onTrack: track,
+                    trackError,
+                    tracking,
+                    source: listSource,
+                    loading: !loadedAt && !error,
+                    hasMore: listHasMore,
+                    loadedAt,
+                  }),
+                ],
+          ),
     toast ? h('div', { key: 'toast', className: 'kcr-toast', role: 'status' }, toast) : null,
   ]);
 }
