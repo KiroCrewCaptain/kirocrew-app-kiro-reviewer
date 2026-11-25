@@ -148,7 +148,7 @@ describe('client limits (same names as the service)', () => {
       requestBytes: 1_000_000,
       diffBytes: 200_000,
       diffFiles: 50,
-      diffChangedLines: 4_000,
+      diffChangedLines: 8_000,
       contextFiles: 20,
       contextFileBytes: 100_000,
       contextTotalBytes: 200_000,
