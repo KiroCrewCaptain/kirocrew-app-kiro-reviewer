@@ -1,0 +1,100 @@
+{
+  "app": "kiro-code-reviewer",
+  "fixture": "minimal",
+  "locale": "en-US",
+  "timezone": "UTC",
+  "provenance_note": "This repository was installed into a throwaway Kiro Crew home and enabled. The page talked to capture/stub_bff.mjs, a local stand-in for the Kiro review service that serves made-up reviews of a made-up shop. No review was sent to the real service.",
+  "data_notes": [
+    "The reviews, findings and diffs come from capture/stub_bff.mjs; times are relative to the moment of capture."
+  ],
+  "init_storage": { "mc-nav": "0" },
+  "ready": "text=Kiro Reviewer",
+  "forbid_text": ["Loading...", "Sign in with Kiro", "KIRO_SIGN_IN_REQUIRED"],
+  "setup": [
+    {
+      "name": "retire the host's startup intro",
+      "method": "POST",
+      "path": "/api/feature-videos/feedback",
+      "body": { "id": "crewmates", "status": "dismissed" },
+      "optional": true
+    },
+    {
+      "name": "install this repository",
+      "method": "POST",
+      "path": "/api/apps/install",
+      "body": { "source": "{{app_root}}" }
+    },
+    {
+      "name": "trust it (it runs its own code)",
+      "method": "POST",
+      "path": "/api/security/trusted-apps/kiro-code-reviewer"
+    },
+    { "name": "turn it on", "method": "POST", "path": "/api/apps/kiro-code-reviewer/enable" },
+    { "wait_ms": 3000 }
+  ],
+  "screenshots": [
+    {
+      "name": "hero",
+      "path": "/apps/kiro-code-reviewer",
+      "themes": ["light", "dark"],
+      "steps": [{ "click": "text=feature/order-lookup" }],
+      "ready_after": "text=Refund route can be called by anyone",
+      "alt": "The Kiro Reviewer page showing a review of the feature/order-lookup branch with its findings placed under the changed lines of the diff"
+    },
+    {
+      "name": "use-case-1",
+      "path": "/apps/kiro-code-reviewer",
+      "themes": ["light"],
+      "ready_after": "text=feature/order-lookup",
+      "alt": "The Kiro Reviewer page listing three reviews of a shop's code, each with its branch name, how long ago it ran and its finding counts"
+    },
+    {
+      "name": "use-case-2",
+      "path": "/apps/kiro-code-reviewer",
+      "themes": ["light"],
+      "steps": [{ "click": "text=feature/order-lookup" }, { "click": "text=Refund route can be called by anyone" }],
+      "ready_after": "text=Fix with agent",
+      "alt": "A finding, Refund route can be called by anyone, opened under its diff line with the Fix with agent and Copy prompt buttons"
+    },
+    {
+      "name": "use-case-3",
+      "path": "/apps/kiro-code-reviewer",
+      "themes": ["light"],
+      "steps": [
+        { "click": "text=feature/order-lookup" },
+        { "click": "text=CSV export does not guard against spreadsheet formulas" },
+        { "click": "text=Suppress…" },
+        {
+          "fill": "textarea[placeholder='Reason (optional)']",
+          "value": "The export is only used by staff on trusted machines"
+        }
+      ],
+      "ready_after": "text=Suppress finding",
+      "alt": "A finding with the suppress box open and the reason The export is only used by staff on trusted machines typed in"
+    }
+  ],
+  "walkthrough": {
+    "name": "walkthrough",
+    "theme": "light",
+    "path": "/apps/kiro-code-reviewer",
+    "alt": "A walkthrough of the Kiro Reviewer page: opening a review, reading a finding under its diff line, and suppressing a finding with a reason",
+    "steps": [
+      { "caption": "Your reviews, newest first" },
+      { "wait_ms": 2000 },
+      { "click": "text=feature/order-lookup" },
+      { "caption": "Findings sit under the lines they are about" },
+      { "wait_ms": 2500 },
+      { "click": "text=Refund route can be called by anyone" },
+      { "caption": "Fix it with the agent, or copy the prompt" },
+      { "wait_ms": 2500 },
+      { "click": "text=CSV export does not guard against spreadsheet formulas" },
+      { "click": "text=Suppress…" },
+      { "caption": "Set aside a finding, with a reason" },
+      { "type": "textarea[placeholder='Reason (optional)']", "value": "Only staff use this export", "delay_ms": 45 },
+      { "click": "text=Suppress finding" },
+      { "caption": "" },
+      { "wait_ms": 2500 }
+    ],
+    "tail_ms": 3000
+  }
+}
