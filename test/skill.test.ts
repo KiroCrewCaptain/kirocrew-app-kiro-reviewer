@@ -81,6 +81,7 @@ describe('skill and manifest', () => {
         'displayName',
         'description',
         'author',
+        'iconPath',
         'skills',
         'mcpServers',
         'permissions',
