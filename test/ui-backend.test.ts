@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { createHash, createHmac } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { AddressInfo } from 'node:net';
 import type { Server } from 'node:http';
@@ -419,6 +419,84 @@ describe('ui backend over the Kiro transport', () => {
     const bad = await call('POST', '/api/kiro-region', { region: 'mars-1' });
     expect(bad.status).toBe(400);
     expect(bad.json.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('saves, reports and removes the Kiro API key without echoing it', async () => {
+    const { call, deps } = await start();
+    const file = path.join(dataDir, 'kiro-api-key');
+    delete deps.env.KIRO_API_KEY;
+    expect((await call('GET', '/api/api-key')).json).toEqual({ set: false });
+
+    const saved = await call('POST', '/api/api-key', { key: '  ksk_secretsecretsecret1234  ' });
+    expect(saved.status).toBe(200);
+    expect(saved.json).toEqual({ set: true, source: 'file', last4: '1234' });
+    expect(JSON.stringify(saved.json)).not.toContain('secret');
+    expect(readFileSync(file, 'utf8')).toBe('ksk_secretsecretsecret1234\n');
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+
+    await call('POST', '/api/api-key', { key: 'ksk_otherotherother5678' });
+    expect(readFileSync(file, 'utf8')).toBe('ksk_otherotherother5678\n');
+    expect((await call('GET', '/api/api-key')).json.last4).toBe('5678');
+
+    const removed = await call('POST', '/api/api-key/remove', {});
+    expect(removed.json).toEqual({ set: false });
+    expect(existsSync(file)).toBe(false);
+  });
+
+  it.each([
+    ['no prefix', 'abc123'],
+    ['inner space', 'ksk_aaaaaaaa bbbbbbbb'],
+    ['too short', 'ksk_abc123'],
+    ['empty', ''],
+    ['number', 5],
+  ])('refuses an API key with %s', async (_n, key) => {
+    const { call, deps } = await start();
+    delete deps.env.KIRO_API_KEY;
+    const res = await call('POST', '/api/api-key', { key });
+    expect(res.status).toBe(400);
+    expect(existsSync(path.join(dataDir, 'kiro-api-key'))).toBe(false);
+    expect(JSON.stringify(res.json)).not.toContain('abc123');
+  });
+
+  it('reports an env key and refuses to save or remove over it', async () => {
+    const { call, deps } = await start();
+    deps.env.KIRO_API_KEY = 'ksk_fromenvfromenv9999';
+    expect((await call('GET', '/api/api-key')).json).toEqual({ set: true, source: 'env', last4: '9999' });
+    for (const [target, body] of [
+      ['/api/api-key', { key: 'ksk_otherotherother5678' }],
+      ['/api/api-key/remove', {}],
+    ] as const) {
+      const res = await call('POST', target, body);
+      expect(res.status).toBe(409);
+      expect(res.json.error.code).toBe('API_KEY_FROM_ENV');
+    }
+    expect(existsSync(path.join(dataDir, 'kiro-api-key'))).toBe(false);
+  });
+
+  it('leaves no temp file behind when the save fails', async () => {
+    const { call, deps } = await start();
+    delete deps.env.KIRO_API_KEY;
+    mkdirSync(path.join(dataDir, 'kiro-api-key', 'blocker'), { recursive: true });
+    const res = await call('POST', '/api/api-key', { key: 'ksk_secretsecretsecret1234' });
+    expect(res.status).not.toBe(200);
+    expect(JSON.stringify(res.json)).not.toContain('secretsecret');
+    expect(readdirSync(dataDir).filter((f) => f.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('omits last4 for a short key', async () => {
+    const { call, deps } = await start();
+    deps.env.KIRO_API_KEY = 'ksk_x';
+    expect((await call('GET', '/api/api-key')).json).toEqual({ set: true, source: 'env' });
+  });
+
+  it('reports a key file others can read instead of failing', async () => {
+    const { call, deps } = await start();
+    delete deps.env.KIRO_API_KEY;
+    writeFileSync(path.join(dataDir, 'kiro-api-key'), 'ksk_x\n', { mode: 0o644 });
+    chmodSync(path.join(dataDir, 'kiro-api-key'), 0o644);
+    const res = await call('GET', '/api/api-key');
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ set: false, code: 'CONFIG_INVALID_API_KEY' });
   });
 
   it('serves a forwarded agent tool call on /api/agent-tools', async () => {

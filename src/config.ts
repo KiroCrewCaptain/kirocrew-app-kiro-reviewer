@@ -1,7 +1,7 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -105,6 +105,52 @@ function readApiKey(env: Env, dataDir: string): string | undefined {
     );
   }
   return str(readFileSync(file, 'utf8').split('\n')[0]);
+}
+
+const API_KEY_RE = /^ksk_\S{16,}$/;
+const LAST4_MIN_LENGTH = 12;
+
+export interface ApiKeyStatus {
+  set: boolean;
+  source?: 'env' | 'file';
+  /** The last four characters, never more. */
+  last4?: string;
+}
+
+/** Whether a key is set, where it comes from and its last four characters. */
+export function apiKeyStatus(env: Env = process.env): ApiKeyStatus {
+  const key = readApiKey(env, resolveDataDir(env));
+  if (key === undefined) return { set: false };
+  const source = str(env.KIRO_API_KEY) ? 'env' : 'file';
+  return key.length >= LAST4_MIN_LENGTH ? { set: true, source, last4: key.slice(-4) } : { set: true, source };
+}
+
+/** Writes the key to `<dataDir>/kiro-api-key` (mode 0600), replacing any earlier one. */
+export function saveApiKey(key: string, env: Env = process.env): void {
+  const value = key.trim();
+  if (!API_KEY_RE.test(value)) {
+    throw new ToolError(
+      'VALIDATION_ERROR',
+      'The key must start with ksk_, be at least 20 characters and contain no whitespace.',
+    );
+  }
+  const dataDir = resolveDataDir(env);
+  mkdirSync(dataDir, { recursive: true, mode: 0o700 });
+  const file = path.join(dataDir, API_KEY_FILE);
+  const tmp = `${file}.${process.pid}.tmp`;
+  try {
+    writeFileSync(tmp, `${value}\n`, { mode: 0o600 });
+    chmodSync(tmp, 0o600);
+    renameSync(tmp, file);
+  } catch {
+    rmSync(tmp, { force: true });
+    throw new ToolError('CONFIG_INVALID_API_KEY', `Could not save the ${API_KEY_FILE} file.`);
+  }
+}
+
+/** Deletes the saved key file; `KIRO_API_KEY` in the environment is untouched. */
+export function removeApiKey(env: Env = process.env): void {
+  rmSync(path.join(resolveDataDir(env), API_KEY_FILE), { force: true });
 }
 
 /** Settings for the `bff` transport: `KIRO_CODE_REVIEWER_BFF_ENDPOINT` or config.json `bffEndpoint`, plus the key. */

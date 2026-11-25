@@ -175,6 +175,13 @@ const CSS = `
 .kcr-gate-f{display:flex;gap:10px;align-items:baseline;margin-top:10px;padding-top:10px;border-top:1px solid var(--border,#27272a)}
 .kcr-gate-f .kcr-sev{min-width:0}
 .kcr-gate-more{margin-top:8px;color:var(--muted,#7f7f88);font-size:12px}
+.kcr-key{margin-top:28px;padding:16px 20px}
+.kcr-key-h{display:flex;align-items:center;gap:10px}
+.kcr-key-t{font-size:15px;font-weight:600;color:var(--text-strong,#fafafa)}
+.kcr-key-p{color:var(--muted,#7f7f88);font-size:12px;margin:6px 0 12px}
+.kcr-key-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.kcr-key-row .kcr-input{flex:1;min-width:220px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.kcr-key-cur{padding:7px 10px;border:1px solid var(--border,#27272a);border-radius:8px;background:var(--bg-elevated,#1a1d25);font:12px ui-monospace,SFMono-Regular,Menlo,monospace}
 .kcr-back{margin-bottom:14px}
 `;
 
@@ -1548,6 +1555,150 @@ function ReviewDetail({ review, entry, onIteration, api, onChanged, notify, sent
 
 /* ---------- page ---------- */
 
+/** Saves the Kiro API key the chat tools use. The key is never read back; only its last four characters show. */
+function ApiKeyCard({ api, notify }) {
+  const [status, setStatus] = useState(null);
+  const [value, setValue] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get(`${API}/api-key`)
+      .then((s) => {
+        if (cancelled) return;
+        setStatus(s);
+        if (s.code) setErr(s.message);
+      })
+      .catch((e) => !cancelled && setErr(parseApiError(e)));
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  const run = useCallback(
+    async (path, body, done) => {
+      setBusy(true);
+      setErr('');
+      try {
+        setStatus(await api.post(`${API}/${path}`, body));
+        setValue('');
+        setEditing(false);
+        notify(done);
+      } catch (e) {
+        setErr(parseApiError(e));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [api, notify],
+  );
+
+  if (!status && !err) return null;
+  const set = Boolean(status && status.set);
+  const fromEnv = set && status.source === 'env';
+  const form = !set || editing;
+
+  return h('section', { className: 'kcr-card kcr-key', 'aria-label': 'Kiro API key' }, [
+    h('div', { key: 'h', className: 'kcr-key-h' }, [
+      h('span', { key: 't', className: 'kcr-key-t' }, 'Kiro API key'),
+      h(Chip, { key: 'c', color: set ? '#22c55e' : '#eab308' }, set ? 'Set' : 'Not set'),
+    ]),
+    h('p', { key: 'p', className: 'kcr-key-p' }, [
+      'The chat tools (code_review_*) need a key. This page works without one, through your Kiro Crew sign-in. ',
+      'Generate a key at ',
+      h(
+        'a',
+        {
+          key: 'l',
+          href: 'https://app.kiro.dev',
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          style: { color: 'var(--kcr-accent-text)' },
+        },
+        'app.kiro.dev',
+      ),
+      ' > Settings > API Keys. The key is stored only on this computer, in a file only you can read, and is never shown again.',
+    ]),
+    set
+      ? h('div', { key: 'cur', className: 'kcr-key-row' }, [
+          h('span', { key: 'm', className: 'kcr-key-cur' }, `ksk_••••••••${status.last4 || ''}`),
+          h(
+            'span',
+            { key: 's', className: 'kcr-sub' },
+            fromEnv ? 'from the KIRO_API_KEY environment variable' : 'saved on this computer',
+          ),
+          !fromEnv && !editing
+            ? h('button', { key: 'r', className: 'kcr-btn', onClick: () => setEditing(true) }, 'Replace key')
+            : null,
+          !fromEnv
+            ? h(
+                'button',
+                {
+                  key: 'x',
+                  className: 'kcr-btn danger',
+                  disabled: busy,
+                  title: 'Deletes the local file. The key stays valid in Kiro until you revoke it there.',
+                  onClick: () => run('api-key/remove', {}, 'Key removed from this computer'),
+                },
+                'Remove',
+              )
+            : null,
+        ])
+      : null,
+    form && !fromEnv
+      ? h(
+          'form',
+          {
+            key: 'f',
+            className: 'kcr-key-row',
+            style: set ? { marginTop: 8 } : undefined,
+            onSubmit: (e) => {
+              e.preventDefault();
+              run('api-key', { key: value }, 'Key saved');
+            },
+          },
+          [
+            h('input', {
+              key: 'i',
+              className: 'kcr-input',
+              type: 'password',
+              autoComplete: 'off',
+              spellCheck: false,
+              placeholder: 'ksk_…',
+              value,
+              onChange: (e) => setValue(e.target.value),
+              'aria-label': 'Kiro API key',
+            }),
+            h(
+              'button',
+              { key: 's', type: 'submit', className: 'kcr-btn primary', disabled: busy || value.trim() === '' },
+              'Save key',
+            ),
+            editing
+              ? h(
+                  'button',
+                  {
+                    key: 'c',
+                    type: 'button',
+                    className: 'kcr-btn',
+                    onClick: () => {
+                      setEditing(false);
+                      setValue('');
+                    },
+                  },
+                  'Cancel',
+                )
+              : null,
+          ],
+        )
+      : null,
+    err ? h('div', { key: 'e', className: 'kcr-err' }, err) : null,
+  ]);
+}
+
 export default function KiroCodeReviewer() {
   useStyle();
   const api = useAppApi();
@@ -1878,6 +2029,7 @@ export default function KiroCodeReviewer() {
                   hasMore: listHasMore,
                   loadedAt,
                 }),
+                h(ApiKeyCard, { key: 'ak', api, notify }),
               ],
         ),
     toast ? h('div', { key: 'toast', className: 'kcr-toast', role: 'status' }, toast) : null,

@@ -8,7 +8,16 @@ import { fileURLToPath } from 'node:url';
 import { callApi } from '../client/http.js';
 import type { GetReviewResponse } from '../client/types.js';
 import { TERMINAL_STATUSES } from '../client/types.js';
-import { loadKiroRegion, loadServiceConfig, loadTransport, resolveDataDir, saveKiroRegion } from '../config.js';
+import {
+  apiKeyStatus,
+  loadKiroRegion,
+  loadServiceConfig,
+  loadTransport,
+  removeApiKey,
+  resolveDataDir,
+  saveApiKey,
+  saveKiroRegion,
+} from '../config.js';
 import { AGENT_TOOLS_ROUTE, callAgentTool } from '../tools/agentTools.js';
 import { ToolError } from '../errors.js';
 import { recordReview } from '../history.js';
@@ -157,6 +166,13 @@ function parseIteration(raw: string | null): number | undefined {
   return n;
 }
 
+/** A key from KIRO_API_KEY wins over the file, so saving or removing the file would have no effect. */
+function refuseEnvKey(deps: ToolDeps): void {
+  if (deps.env.KIRO_API_KEY?.trim()) {
+    throw new HttpError(409, 'API_KEY_FROM_ENV', 'KIRO_API_KEY is set in the environment and overrides a saved key.');
+  }
+}
+
 async function route(
   method: string,
   url: URL,
@@ -203,6 +219,29 @@ async function route(
     if (typeof region !== 'string') throw new HttpError(400, 'VALIDATION_ERROR', 'region must be a string.');
     saveKiroRegion(region, deps.env);
     return { status: 200, body: { kiroRegion: region } };
+  }
+
+  if (method === 'GET' && p === '/api/api-key') {
+    try {
+      return { status: 200, body: apiKeyStatus(deps.env) };
+    } catch (err) {
+      if (err instanceof ToolError) return { status: 200, body: { set: false, code: err.code, message: err.message } };
+      throw err;
+    }
+  }
+
+  if (method === 'POST' && p === '/api/api-key') {
+    const key = jsonObject(body).key;
+    if (typeof key !== 'string') throw new HttpError(400, 'VALIDATION_ERROR', 'key must be a string.');
+    refuseEnvKey(deps);
+    saveApiKey(key, deps.env);
+    return { status: 200, body: apiKeyStatus(deps.env) };
+  }
+
+  if (method === 'POST' && p === '/api/api-key/remove') {
+    refuseEnvKey(deps);
+    removeApiKey(deps.env);
+    return { status: 200, body: apiKeyStatus(deps.env) };
   }
 
   if (method === 'GET' && p === '/api/reviews') {
