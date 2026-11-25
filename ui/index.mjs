@@ -176,7 +176,8 @@ const CSS = `
 .kcr-gate-f .kcr-sev{min-width:0}
 .kcr-gate-more{margin-top:8px;color:var(--muted,#7f7f88);font-size:12px}
 .kcr-key{margin-bottom:20px;padding:16px 20px}
-.kcr-keybar{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#7f7f88)}
+.kcr-headctl{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.kcr-keybar{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted,#7f7f88);white-space:nowrap}
 .kcr-keybar .kcr-mono{color:var(--text,#e4e4e7)}
 .kcr-link{background:none;border:0;padding:0;cursor:pointer;color:var(--kcr-accent-text);font-size:12px;text-decoration:underline}
 .kcr-key-h{display:flex;align-items:center;gap:10px}
@@ -1957,22 +1958,24 @@ export default function KiroCodeReviewer() {
         ),
       ]),
       h('span', { key: 'sp', className: 'kcr-spacer' }),
-      apiKey.set ? h(ApiKeyBar, { key: 'kb', apiKey }) : null,
-      status && status.kiroRegion
-        ? h(
-            'select',
-            {
-              key: 'kr',
-              className: 'kcr-input kcr-region',
-              value: status.kiroRegion,
-              disabled: switchingRegion,
-              onChange: (e) => changeRegion(e.target.value),
-              'aria-label': 'Kiro region',
-              title: 'Kiro region whose reviews this page shows',
-            },
-            KIRO_REGIONS.map(([id, label]) => h('option', { key: id, value: id }, `${label} · ${id}`)),
-          )
-        : null,
+      h('div', { key: 'ctl', className: 'kcr-headctl' }, [
+        status && status.kiroRegion
+          ? h(
+              'select',
+              {
+                key: 'kr',
+                className: 'kcr-input kcr-region',
+                value: status.kiroRegion,
+                disabled: switchingRegion,
+                onChange: (e) => changeRegion(e.target.value),
+                'aria-label': 'Kiro region',
+                title: 'Kiro region whose reviews this page shows',
+              },
+              KIRO_REGIONS.map(([id, label]) => h('option', { key: id, value: id }, `${label} · ${id}`)),
+            )
+          : null,
+        apiKey.set ? h(ApiKeyBar, { key: 'kb', apiKey }) : null,
+      ]),
       h(
         'button',
         {
