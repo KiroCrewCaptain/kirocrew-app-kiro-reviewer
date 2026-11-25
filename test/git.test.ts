@@ -139,7 +139,9 @@ describe('collectRepo', () => {
     for (let i = 50; i < lines.length; i += 100) lines[i] = `export const v${i + 1} = "changed";`;
     write(r, 'src/big.ts', lines.join('\n') + '\n');
     git(r, 'commit', '-q', '-am', 'change every 100th line');
-    const wide = execFileSync('git', ['-C', r, 'diff', '-U50', 'base2', 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).length;
+    const wide = execFileSync('git', ['-C', r, 'diff', '-U50', 'base2', 'HEAD'], {
+      maxBuffer: 64 * 1024 * 1024,
+    }).length;
     expect(wide).toBeGreaterThan(LIMITS.diffBytes);
     const c = await collectRepo({ repoPath: r, base: 'base2', includeUncommitted: false, contextFiles: [] });
     expect(Buffer.byteLength(c.diff)).toBeLessThan(LIMITS.diffBytes);
