@@ -110,19 +110,23 @@ describe('collectRepo', () => {
     expect(out.rules.reviewMd).toContain('(base)');
   });
 
-  it('sends whole-file hunks: unchanged lines far from the change are in the diff', async () => {
+  it('sends function-context hunks: the whole changed function, not the rest of the file', async () => {
     const r = repo();
-    const lines = Array.from({ length: 30 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
-    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    const body = Array.from({ length: 30 }, (_, i) => `  const a${i + 1} = ${i + 1};`);
+    const file = (b: string[]) =>
+      ['export function big() {', ...b, '}', '', 'export function other() {', '  const unrelated = 1;', '}', ''].join('\n');
+    write(r, 'src/big.ts', file(body));
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add big');
     git(r, 'branch', 'base2');
-    lines[14] = 'export const v15 = "changed";';
-    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    body[14] = '  const a15 = "changed";';
+    write(r, 'src/big.ts', file(body));
     git(r, 'commit', '-q', '-am', 'change line 15');
     const c = await collectRepo({ repoPath: r, base: 'base2', includeUncommitted: false, contextFiles: [] });
-    expect(c.diff).toContain(' export const v1 = 1;');
-    expect(c.diff).toContain(' export const v30 = 30;');
+    expect(c.diff).toContain(' export function big() {');
+    expect(c.diff).toContain('   const a1 = 1;');
+    expect(c.diff).toContain('   const a30 = 30;');
+    expect(c.diff).not.toContain('unrelated');
     expect(c.diff.match(/^@@ /gm)).toHaveLength(1);
   });
 
