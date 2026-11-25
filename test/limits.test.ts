@@ -145,8 +145,8 @@ describe('client limits (same names as the service)', () => {
 
   it('matches the service constants', () => {
     expect(LIMITS).toMatchObject({
-      requestBytes: 1_000_000,
-      diffBytes: 200_000,
+      requestBytes: 2_000_000,
+      diffBytes: 1_000_000,
       diffFiles: 50,
       diffChangedLines: 8_000,
       contextFiles: 20,
