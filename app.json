@@ -117,6 +117,10 @@
               "minimum": 0,
               "maximum": 2
             },
+            "include_changed_files": {
+              "type": "boolean",
+              "description": "Also send the full text of the modified and renamed files, matching include-changed-files in the GitHub action (default true; false opts out). Added files are not attached, since the diff carries them whole; deleted, binary, secret-like and non-text files are skipped. Attached files are redacted, listed in the summary and count toward the context limits; files that do not fit are skipped and listed."
+            },
             "include_manifest": {
               "type": "boolean",
               "description": "Send the tracked file names (no content) so the reviewer can request context (default true)."

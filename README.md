@@ -217,6 +217,12 @@ build/test/lint commands and the npm pin are in [Build, test, lint](#build-test-
 
 `code_review_prepare` also takes `contextRounds` (0..2, **default 2** for new reviews; `0` opts out) and
 `includeManifest` (default true; the manifest is sent only when rounds are enabled or on a resubmit).
+`includeChangedFiles` (default true; `false` opts out) also sends the full text of the modified and renamed files, like
+the GitHub action's `include-changed-files`, so the reviewers see whole files rather than hunks. The files are read like
+context-round answers (same path refusals, at HEAD or from the working tree with `includeUncommitted`), redacted, and added to
+`context` after the user's `contextFiles`. A file that does not fit the remaining context limits (20 files, 100 KB
+each, 200 KB total) is not sent; the summary lists every changed file it left out and why. Added files are not
+attached, since the diff already carries them whole.
 `code_review_get` returns at once on `NEEDS_CONTEXT` with an `AWAITING` round (structured `needsContext: true`) with
 the requests rendered, because the answer window is about 2 minutes. While a submitted round is still being applied
 (`NEEDS_CONTEXT` with the round `RESPONDED`/`APPLIED`, or a closed round being resumed) it keeps polling, bounded by

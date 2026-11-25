@@ -5,6 +5,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { ClientInfo, FindingResponse, SubmitRequest } from '../client/types.js';
 import type { RedactionLocation } from '../redact.js';
 import type { ContextDecision } from './contextAnswers.js';
+import type { ChangedFileSkip } from './changedFiles.js';
 import type { FileStatus } from './diffInfo.js';
 
 /** Canonical JSON: object keys sorted recursively, no whitespace, `undefined` members dropped. */
@@ -46,6 +47,8 @@ export interface PayloadSummary {
   changedLines: number;
   rules: { reviewMd: boolean; revision: string };
   contextFiles: Array<{ path: string; bytes: number }>;
+  /** includeChangedFiles: changed files sent in full (they are also in contextFiles), and those left out. */
+  includedChangedFiles?: { attached: string[]; skipped: ChangedFileSkip[] };
   redactions: RedactionLocation[];
   level?: string;
   iterationBudget?: number;
@@ -88,6 +91,8 @@ interface SummaryCaps {
   files: number;
   locations: number;
   context: number;
+  /** Max changed files listed as not sent (includeChangedFiles). */
+  notSent: number;
   /** Max code points of the author-intent excerpt shown. */
   intent: number;
   /** Max response rows shown. */
@@ -149,6 +154,14 @@ function render(s: PayloadSummary, caps: SummaryCaps): string {
   lines.push(`- Context files: ${s.contextFiles.length} (${ctxBytes} bytes)`);
   for (const c of s.contextFiles.slice(0, caps.context)) lines.push(`  - ${code(c.path)} (${c.bytes} bytes)`);
   if (s.contextFiles.length > caps.context) lines.push(`  - … and ${s.contextFiles.length - caps.context} more`);
+  if (s.includedChangedFiles) {
+    const { attached, skipped } = s.includedChangedFiles;
+    lines.push(
+      `- Changed files sent in full: ${attached.length} (included in the context files above)${skipped.length > 0 ? `; ${skipped.length} not sent` : ''}`,
+    );
+    for (const k of skipped.slice(0, caps.notSent)) lines.push(`  - not sent: ${code(k.path)} (${k.reason})`);
+    if (skipped.length > caps.notSent) lines.push(`  - … and ${skipped.length - caps.notSent} more not sent`);
+  }
 
   const counts = new Map<string, number>();
   for (const r of s.redactions) counts.set(r.type, (counts.get(r.type) ?? 0) + 1);
@@ -177,13 +190,14 @@ function render(s: PayloadSummary, caps: SummaryCaps): string {
 /**
  * summaryMarkdown: at most 50 files and the first 20 redaction locations.
  * If it still exceeds 4,000 chars, the file list is shortened first, then the redaction locations,
- * then the context list. Counts and totals are never dropped.
+ * then the changed files not sent, then the context list. Counts and totals are never dropped.
  */
 export function buildSummaryMarkdown(s: PayloadSummary): string {
   const caps: SummaryCaps = {
     files: Math.min(SUMMARY_MAX_FILES, s.files.length),
     locations: Math.min(SUMMARY_MAX_REDACTION_LOCATIONS, s.redactions.length),
     context: s.contextFiles.length,
+    notSent: s.includedChangedFiles?.skipped.length ?? 0,
     intent: SUMMARY_INTENT_CHARS,
     responses: s.responses?.length ?? 0,
   };
@@ -191,6 +205,7 @@ export function buildSummaryMarkdown(s: PayloadSummary): string {
   while (md.length > SUMMARY_MAX_CHARS) {
     if (caps.files > 0) caps.files--;
     else if (caps.locations > 0) caps.locations--;
+    else if (caps.notSent > 0) caps.notSent--;
     else if (caps.context > 0) caps.context--;
     else if (caps.responses > 0) caps.responses--;
     else if (caps.intent > 40) caps.intent = Math.max(40, caps.intent - 40);

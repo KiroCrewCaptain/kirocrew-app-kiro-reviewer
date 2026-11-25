@@ -3,6 +3,7 @@
 
 import path from 'node:path';
 import { z } from 'zod';
+import { changedFilePaths, fitChangedFiles, readChangedFiles } from '../collect/changedFiles.js';
 import { scanDiff } from '../collect/diffInfo.js';
 import { collectRepo, listTrackedFiles, REF_RE } from '../collect/git.js';
 import { buildManifest } from '../collect/manifest.js';
@@ -57,6 +58,12 @@ export const prepareInputShape = {
     .optional()
     .describe(
       'Rounds in which the reviewer may request more repository context, 0..2 per review (new reviews only; default 2; 0 opts out).',
+    ),
+  includeChangedFiles: z
+    .boolean()
+    .optional()
+    .describe(
+      'Also send the full text of the modified and renamed files, matching include-changed-files in the GitHub action (default true; false opts out). Added files are not attached, since the diff carries them whole; deleted, binary, secret-like and non-text files are skipped. Attached files are redacted, listed in the summary and count toward the context limits; files that do not fit are skipped and listed.',
     ),
   includeManifest: z
     .boolean()
@@ -151,6 +158,27 @@ export async function prepareTool(input: unknown, deps: ToolDeps) {
     redactions.push(...r.redactions);
     return { path: c.path, content: r.text };
   });
+  const info = scanDiff(diff.text);
+  // Changed files in full, after the user's context files and within what is left of the context limits.
+  let includedChangedFiles: PayloadSummary['includedChangedFiles'];
+  if (args.includeChangedFiles !== false) {
+    const read = await readChangedFiles({
+      top: repo.toplevel,
+      headSha: repo.headSha,
+      includeUncommitted,
+      paths: changedFilePaths(info.files),
+      exclude: new Set(context.map((c) => c.path)),
+    });
+    const redacted = read.candidates.map((c) => ({ path: c.path, ...redactText(c.content, c.path) }));
+    const fit = fitChangedFiles(
+      context,
+      redacted.map((r) => ({ path: r.path, content: r.text })),
+    );
+    const kept = new Set(fit.attached.map((a) => a.path));
+    for (const r of redacted) if (kept.has(r.path)) redactions.push(...r.redactions);
+    context.push(...fit.attached);
+    includedChangedFiles = { attached: fit.attached.map((a) => a.path), skipped: [...read.skipped, ...fit.skipped] };
+  }
   // Intent and commit messages are redacted like any text before they leave the machine.
   let intent: string | undefined;
   if (args.intent !== undefined && args.intent !== '') {
@@ -178,7 +206,6 @@ export async function prepareTool(input: unknown, deps: ToolDeps) {
   const rules = reviewMd !== undefined ? { reviewMd } : {};
 
   // Step 9: client limit pre-check.
-  const info = scanDiff(diff.text);
   const diffPaths = info.files.flatMap((f) => [f.path, ...(f.oldPath && f.oldPath !== f.path ? [f.oldPath] : [])]);
   const wantManifest = ((contextRounds ?? 0) > 0 || args.reviewId !== undefined) && args.includeManifest !== false;
   const manifest = wantManifest
@@ -239,6 +266,7 @@ export async function prepareTool(input: unknown, deps: ToolDeps) {
       revision: repo.mergeBase,
     },
     contextFiles: context.map((c) => ({ path: c.path, bytes: utf8Bytes(c.content) })),
+    ...(includedChangedFiles ? { includedChangedFiles } : {}),
     redactions,
     ...(args.reviewId
       ? { reviewId: args.reviewId }
