@@ -88,6 +88,11 @@ ask for reviews in chat you also need a Kiro API key; see [First run](#first-run
 only when the shared MCP gateway is on (**Settings → Shared MCP gateway**); otherwise you get the same information as
 plain text.
 
+**Runs its own code:** this app ships a page backend, an MCP server and an enable-time check script, so Kiro Crew runs it
+only for a third-party app you trust. If Crew refuses the install or the enable with `app_execution_denied`, turn on
+**Settings → Security → Third-party apps** (`agent.apps_allow_third_party` in `config.json`), or trust this app alone as
+in step 3 above.
+
 ## First run
 
 The **Kiro Reviewer** page opens with your reviews list. If you have not asked for a review yet, it is empty.
