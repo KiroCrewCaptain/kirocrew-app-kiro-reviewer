@@ -11,8 +11,8 @@ export const MAX_CONTEXT_ROUNDS_PER_REVIEW = 2;
  * exactly like the service would.
  */
 export const LIMITS = {
-  requestBytes: 1_000_000,
-  diffBytes: 200_000,
+  requestBytes: 2_000_000,
+  diffBytes: 1_000_000,
   diffFiles: 50,
   diffChangedLines: 4_000,
   contextFiles: 20,

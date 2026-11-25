@@ -114,7 +114,7 @@ missing.
 
 Limits you will meet:
 
-- The change can be at most about 200 KB of diff. Generated, lock and vendored files are left out by the service.
+- The change can be at most about 1 MB of diff. Generated, lock and vendored files are left out by the service.
 - A review has at most 2 rounds in which the reviewer can ask for extra context.
 - The review covers committed changes against the branch you name. Ask for uncommitted changes explicitly.
 - **Unsuppress** does not reach the service yet: the page shows the finding again, but the service keeps suppressing it.
@@ -323,7 +323,7 @@ No secrets are stored in the repo or the config; the API key stays in the local 
 (`src/client/bff.ts`), and maps the reply back. Un-suppress has no BFF operation and fails as `UNSUPPORTED`. The BFF
 leaves `counts` off an unfinished iteration; the tools see zeros. `code_review_status` checks the endpoint and the key
 with one read of a review id that cannot exist. The key is sent only to the configured endpoint, and a redirect is
-refused. The BFF has its own request size limit (1,000,000 bytes), so the app's 200 KB diff limit still applies.
+refused. The BFF has its own request size limit (2,000,000 bytes once it is deployed), so a request over 1,000,000 bytes is refused by the BFF until then.
 
 ### Kiro sign-in through the gateway (`backend/`)
 
