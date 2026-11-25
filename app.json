@@ -4,6 +4,7 @@
   "displayName": "Kiro Reviewer",
   "description": "Pre-PR AI code review: prepares a redacted diff locally, sends it to the Kiro Reviewer service when you ask for a review, and shows findings with cross-iteration tracking.",
   "author": "Kiro",
+  "iconPath": "assets/icon.png",
   "skills": ["skills/code-review"],
   "mcpServers": {
     "code-reviewer": {
