@@ -1,10 +1,170 @@
-# Kiro Reviewer for Kiro Crew
+# Kiro Reviewer
 
-Kiro Crew app (`kiro-code-reviewer`) for the Kiro Reviewer pre-PR review service. It ships a stdio MCP server
-(`dist/server.mjs`, one esbuild bundle with every dependency inlined), a bash launcher, an `onEnable` check script and
-the `code-review` skill.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/hero-dark.png">
+  <img src="docs/media/hero-light.png" alt="The Kiro Reviewer page showing a review of the feature/order-lookup branch, with the finding Refund route can be called by anyone placed under the line of the diff it is about">
+</picture>
 
-## How to install
+**Get an AI review of your changes before you open the pull request.**
+
+Kiro Reviewer is an app for [Kiro Crew](https://github.com/kirodotdev/KiroCrew),
+the open-source personal AI agent.
+
+## What it is
+
+Kiro Reviewer adds a **Kiro Reviewer** page to the Kiro Crew sidebar and lets your Kiro Crew agent review your git
+changes in chat. You ask for a review, the agent shows you exactly what would be sent, and after you agree it sends the
+change to the Kiro review service. The findings come back in the chat and on the page, placed under the changed lines
+they are about.
+
+**Get started:** Open **Apps → Discover**, find **Kiro Reviewer**, choose **Install**, then **Enable**. See [Install](#install) for the details.
+
+## The problem it solves
+
+You have finished a change and want a second pair of eyes before anyone else sees it, but a pull request puts your
+half-checked work in front of your team. You also do not want to paste code into a review tool by hand, or send secrets by
+accident.
+
+Kiro Reviewer gets a review while the change is still yours. It gathers the change from your own git repository,
+blanks out anything that looks like a secret, and shows you what it will send before it sends anything. It never sends
+files it was not allowed to, and it never changes your code on its own: it only reports findings, and you decide what to
+do with each one.
+
+## Top 3 use cases
+
+### 1. Review a branch before you open a pull request
+
+You are on a feature branch and want feedback before you ask a teammate. In a Kiro Crew chat you ask the agent to review
+your changes against your main branch. The agent shows what it will send. You say yes, and the findings appear in the
+chat, sorted by how serious they are. The **Kiro Reviewer** page lists every review with its branch, how long ago it
+ran and what it found, and **Open review** shows the details.
+
+![The Kiro Reviewer page listing three reviews of a shop's code, each with its branch name, how long ago it ran and its finding counts](docs/media/use-case-1-light.png)
+
+### 2. Fix a finding with the agent
+
+A review reports a real problem, such as user input put straight into a database query. On the **Kiro Reviewer** page you
+open the review and find the finding under the line it is about. Choose **Fix with agent**. That opens a chat in
+which the agent first checks the finding against your code and only then changes it. After you fix it you ask for the
+review again, and the finding shows as resolved.
+
+![The finding Refund route can be called by anyone, high severity and blocking, with its explanation, a suggested fix and the Fix with agent and Copy prompt buttons](docs/media/use-case-2-light.png)
+
+### 3. Set aside a finding that is wrong
+
+The reviewer sometimes flags something that is fine in your situation. Choose **Suppress…** on the finding, type a
+short reason, and choose **Suppress finding**. It stops counting for the rest of that review. Under **Was this
+helpful?** you can also choose **👍 Yes** or **👎 No** so the reviewer team knows whether it helped.
+
+![The low-severity finding CSV export does not guard against spreadsheet formulas, with the suppress box open and the reason The export is only used by staff on trusted machines typed in](docs/media/use-case-3-light.png)
+
+## Watch it
+
+![A walkthrough of the Kiro Reviewer page: the review list, one review's summary, findings under their diff lines, the Fix with agent button, and suppressing a finding with a reason](docs/media/walkthrough.gif)
+
+[Watch the walkthrough as a video (MP4)](docs/media/walkthrough.mp4).
+
+<sub>Recorded from a real Kiro Crew (release 0.13.0) on a throwaway home with this repository installed. The reviews
+are made up: a capture-only build of the page's backend answered from demo data
+([`capture/stub_bff.mjs`](capture/stub_bff.mjs)) instead of the Kiro review service, so no review was sent anywhere.
+The recording shows the page only, not a chat with the agent.</sub>
+
+## Install
+
+**From the Kiro Crew App Store**
+
+1. In Kiro Crew, open **Apps → Discover** in the left sidebar.
+2. Search for **Kiro Reviewer** and choose **Install**.
+3. Kiro Crew asks **Trust “Kiro Reviewer” to run its own code?** The app needs its own code to read your git
+   repository on your computer and to talk to the review service. Trusting it gives that code the same access Kiro Crew
+   has (your files, your saved sign-ins and the internet), as the dialog says. Choose **Trust this app**. You can take it
+   back later in **Settings → Security → Third-party apps**.
+4. The app installs switched off. Choose **Enable** on its page. It then shows up under **Apps** in the sidebar and in
+   **Apps → Library**.
+
+**What you need:** a Mac or a Linux computer with `git` and Node.js 22 or newer installed, and a Kiro account. The
+**Kiro Reviewer** page uses the Kiro sign-in you already have in Kiro Crew (**Settings → Agent → Kiro sign-in**). To
+ask for reviews in chat you also need a Kiro API key; see [First run](#first-run). Chat tool results appear as a card
+only when the shared MCP gateway is on (**Settings → Shared MCP gateway**); otherwise you get the same information as
+plain text.
+
+## First run
+
+The **Kiro Reviewer** page opens with your reviews list. If you have not asked for a review yet, it is empty.
+
+The page works as soon as you are signed in to Kiro in Kiro Crew. To ask for a review **in chat**, give the app a Kiro
+API key once: set it as `KIRO_API_KEY` where Kiro Crew runs, or save it in the app's data folder (see
+[Settings & data](#settings--data)). Then ask the agent to check the Kiro Reviewer setup, and it reports what is
+missing.
+
+## How to use it
+
+1. In a Kiro Crew chat, ask the agent to review your changes, for example: "Review my changes against origin/main with
+   Kiro Reviewer." You can ask for a quick, standard or deep review.
+2. Read the summary the agent shows. It lists the files, what was blanked out as a secret, and what will be sent. Say
+   yes to send it. Nothing is sent before you do.
+3. The reviewer may ask for more files to understand the change (up to two rounds, and you have about two minutes to
+   answer each). The agent shows what it would share. Agree, or tell it to decline any file.
+4. Read the findings in the chat, or open **Kiro Reviewer** in the sidebar and select the review to see each finding under
+   its diff line.
+5. For each finding, choose **Fix with agent**, **Copy prompt**, or **Suppress…** with a reason. **Copy for CR/PR** copies
+   a short summary for your pull request.
+6. After you change your code, ask the agent to send the review again. The page shows what is new, what is resolved
+   and what is still open.
+
+Limits you will meet:
+
+- The change can be at most about 200 KB of diff. Generated, lock and vendored files are left out by the service.
+- A review has at most 2 rounds in which the reviewer can ask for extra context.
+- The review covers committed changes against the branch you name. Ask for uncommitted changes explicitly.
+- **Unsuppress** does not reach the service yet: the page shows the finding again, but the service keeps suppressing it.
+- The page reads reviews from your Kiro account, but the diff placed under each finding is only available for reviews
+  sent from this computer.
+
+## Settings & data
+
+- **Where your data lives:** `~/.kiro/crew/apps/kiro-code-reviewer/data/` (or under `$KIROCREW_HOME` if you set it).
+  It holds your list of reviews, the diffs this computer sent, and optional settings in `config.json`. Prepared
+  payloads are kept for 30 minutes.
+- **What leaves your computer:** only after you say yes, the redacted diff, commit messages (no author names, emails or
+  times), the rules file `REVIEW.md` and any files you approved go to the Kiro review service at `https://app.kiro.dev`
+  (or `https://eu-central-1.app.kiro.dev` if you pick the Europe region on the page). Your API key goes only to that
+  address.
+- **Your API key:** set `KIRO_API_KEY`, or save it as the first line of `data/kiro-api-key` and make it private with
+  `chmod 600`. It is never stored in the app's code or settings.
+- **Turn it off:** **Apps → Library**, open the **⋯** menu on Kiro Reviewer, choose **Disable**. Your data is kept.
+- **Remove it:** the same menu, **Uninstall**. **Keep app data** is ticked by default; untick it to delete the data too.
+
+## Troubleshooting / FAQ
+
+**The agent says the Kiro Reviewer is not set up, or a tool fails about a key.**
+Ask the agent to check the Kiro Reviewer setup and read the result to you. Most often the Kiro API key is missing; see
+[First run](#first-run).
+
+**The page says I am not signed in.**
+Sign in to Kiro in **Settings → Agent → Kiro sign-in**, then reload the page.
+
+**The reviewer asked for context, but nothing happened.**
+You have about two minutes to answer. After that the review continues without the extra files, and the result says it
+was reviewed without some requested context.
+
+**A file I wanted the reviewer to see was refused.**
+The app never shares files outside your repository, anything under `.git`, or files whose names look like secrets (such
+as `.env`, private keys and credentials files). That is by design.
+
+**The results show as plain text instead of a card.**
+Turn on the shared MCP gateway in **Settings → Shared MCP gateway** and make sure MCP Apps are on.
+
+**I changed the app's code and the page did not update.**
+Turn the app off and on in **Apps → Library** so its backend restarts, then reload the page.
+
+## Development
+
+Layout: `src/` (the review tools and the page backend), `backend/` (the Python hook that signs the page in through
+the gateway), `ui/` (the page), `card/` (the chat card), `skills/` (the agent's instructions), `test/` and `test_py/`
+(tests). The sections below describe how it works.
+
+### Install from a clone
 
 New to this app? Build the bundle, install it into your Crew, trust and enable it, then give the MCP tools a Kiro API
 key. Each step links to the section with the full detail.
@@ -44,7 +204,7 @@ No secrets live in the repo or in config — the API key stays in your local dat
 the non-default `KIROCREW_HOME` caveat are in [Installing into Kiro Crew](#installing-into-kiro-crew-manual-step);
 build/test/lint commands and the npm pin are in [Build, test, lint](#build-test-lint).
 
-## Tools
+### Tools
 
 | Tool                          | Auto-approve | Network             | What it does                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------------------- | ------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -64,7 +224,7 @@ the requests rendered, because the answer window is about 2 minutes. While a sub
 `stillRunning: true` with "📨 … is applying the submitted context." (Before this, a get right after
 `code_review_context_submit` returned NEEDS_CONTEXT immediately, 8 times in a row in one observed session.)
 
-## Context rounds (client side)
+### Context rounds (client side)
 
 Flow: prepare → submit (`contextRounds: 2`, `manifest`) → get → `NEEDS_CONTEXT` → `code_review_context_prepare` →
 the agent shows `summaryMarkdown` → `code_review_context_submit` → get. If the window closes first, nothing is sent and
@@ -93,7 +253,7 @@ without some requested context (not fully informed)" and lists what was declined
   `contextResponse.totalBytes` 200,000, `context.iterationTotalBytes` 300,000, `manifest.paths` 2,000,
   `context.rounds` 2.
 
-## Git metadata (client side)
+### Git metadata (client side)
 
 `code_review_prepare` takes an optional `intent` string (a one-paragraph description of what the change is meant to
 do) and collects commit messages for the reviewed range. Both are sent as the payload's `intent` and `commits`
@@ -116,7 +276,7 @@ is a Find-only spec-drift signal; neither suppresses a finding).
 - **Skill:** `skills/code-review/SKILL.md` instructs the agent to write a one-paragraph `intent` from its task before
   `code_review_prepare` and to note it is shown in the approval summary and treated as an untrusted claim.
 
-## Finding responses on resubmit (client side)
+### Finding responses on resubmit (client side)
 
 On a **resubmit** (`code_review_prepare` with `reviewId`), `code_review_prepare` takes an optional `responses` array
 recording the author's disposition of each previous-iteration finding the user wants to address. It is sent as the
@@ -136,7 +296,7 @@ threads them.
   text) inside its `<details>` block, plus a "blocking, dismissed by author" or "claimed fixed, still present" badge
   when the service set those flags. All thread text is escaped (untrusted model/author data).
 
-## Configuration (read on every tool call)
+### Configuration (read on every tool call)
 
 The app always talks to the Kiro BFF. Env first, then `<dataDir>/config.json`
 (`{ "bffEndpoint", "kiroRegion" }`).
@@ -165,7 +325,7 @@ leaves `counts` off an unfinished iteration; the tools see zeros. `code_review_s
 with one read of a review id that cannot exist. The key is sent only to the configured endpoint, and a redirect is
 refused. The BFF has its own request size limit (1,000,000 bytes), so the app's 200 KB diff limit still applies.
 
-## Kiro sign-in through the gateway (`backend/`)
+### Kiro sign-in through the gateway (`backend/`)
 
 No API key: the page calls the BFF with Kiro Crew's own Kiro sign-in. `app.json` `backend.hooks.routes` loads `backend/routes.py` into the Crew gateway,
 which serves:
@@ -198,13 +358,13 @@ Tests: `<kirocrew dev venv>/bin/python -m pytest test_py` (needs `kiro_crew`, `a
 venv's Crew can differ from the installed one, so also run `scripts/check_hook_in_installed_crew.py` with the installed
 Crew's Python (usage in the script); it exits non-zero unless both hook routes register.
 
-## Naming
+### Naming
 
 App id `kiro-code-reviewer` (install path `~/.kiro/crew/apps/kiro-code-reviewer/`), MCP server `code-reviewer`,
 launcher `bin/kiro-code-reviewer-mcp`, skill `skills/code-review`. The MCP tool names (`code_review_*`) name the
 action, not the product.
 
-## Service results shown
+### Service results shown
 
 - **Limits:** the client pre-checks the same input limits as the service; `rules.reviewMdBytes` is 131,072 bytes
   (128 KB).
@@ -218,7 +378,7 @@ action, not the product.
 
 All new response fields are optional, so older service responses render as before.
 
-## First-party agent tools
+### First-party agent tools
 
 `app.json` also declares the seven tools as `agentTools` (namespace `code_review`, route `agent-tools`), generated
 from `src/tools/registry.ts` by `npm run agent-tools`; a test fails when the block is stale. Kiro Crew reads the block
@@ -227,7 +387,7 @@ proxy to the page backend's `POST /api/agent-tools`, so the tools use the page's
 data dir. Crew's argument names are snake_case (`repo_path`), and `responses` is passed as a JSON-encoded string.
 Once the app ships first-party, drop `mcpServers` so the tools are not listed twice.
 
-## Crew page
+### Crew page
 
 The app adds a **Kiro Reviewer** page (`ui/index.mjs`, plain ESM, no build step) served by a loopback backend
 (`dist/ui-backend.mjs`, built from `src/ui/backend.ts`). The backend binds `127.0.0.1` and rejects every request
@@ -258,7 +418,7 @@ ships it, in `<dataDir>/config.json`:
 After changing backend code, turn the app off and on in the Crew dashboard so its backend restarts; UI files are
 served from disk and need only a page reload.
 
-## Chat card (MCP Apps)
+### Chat card (MCP Apps)
 
 `code_review_get`, `code_review_prepare` and `code_review_context_prepare` declare `_meta.ui.resourceUri =
 ui://kiro-code-reviewer/card`. The server serves `dist/card.html` (built from `card/`; one self-contained file in Crew's
@@ -274,7 +434,7 @@ Requires the Crew **shared MCP gateway** (`mcp_gateway.enabled`; Settings → Sh
 Without it the tools return their text as before. All review text is escaped before it reaches the markup
 (`card/render.mjs`, tested in `test/card.test.ts`).
 
-## Build, test, lint
+### Build, test, lint
 
 ```bash
 npx -y npm@11.6.2 ci                         # see the install note below
@@ -290,7 +450,7 @@ Install note: npm 11.3.0 crashes with `Cannot read properties of null (reading '
 4.1.12 peer set on a fresh install, so `package-lock.json` was generated with `npx npm@11.6.2 install`. npm 11.3.0 also rejects the lockfile in `npm ci` (EUSAGE, missing optional `@emnapi/*`), so
 install with `npx -y npm@11.6.2 ci`. All versions are pinned exactly.
 
-## Smoke test (live)
+### Smoke test (live)
 
 ```bash
 npm run build
@@ -309,7 +469,7 @@ Set `KIRO_CODE_REVIEWER_SMOKE_DATA_DIR=~/.kiro/crew/apps/kiro-code-reviewer/data
 directory and keep it, so the runs appear in the Crew page. **Running the harness is the operator's explicit
 approval** to send the synthetic payloads.
 
-## Installing into Kiro Crew (manual step)
+### Installing into Kiro Crew (manual step)
 
 The implementation never changes your Crew configuration. To install for real:
 
@@ -338,7 +498,7 @@ KIROCREW_HOME="$T" KIRO_HOME="$T/kiro" kirocrew app install "$PWD" > build-logs/
 rm -rf "$T"
 ```
 
-## Security posture
+### Security posture
 
 - Git runs via `execFile` with argument arrays (never a shell), `--end-of-options`, a 2 MB output cap and a 30 s
   timeout. Base refs must match `^[A-Za-z0-9._/@^~-]{1,200}$` and must not start with `-`.
@@ -346,6 +506,24 @@ rm -rf "$T"
 - Redaction replaces only secret values with `[REDACTED:<type>]`.
 - Logs go to stderr only and contain tool names, IDs and error codes, never diffs, paths, rules or findings.
 
+### Re-capture the README media
+
+The pictures and the recording come from a real, isolated Kiro Crew gateway driven by [`capture/`](capture/README.md).
+After any change to what the app shows:
+
+```bash
+npx -y npm@11.6.2 ci
+capture/run.sh /path/to/KiroCrew
+python capture/check_readme.py
+```
+
+`capture/run.sh` builds a scratch copy of the app whose page backend answers from the demo data in
+`capture/stub_bff.mjs` (`capture/demo-backend.mjs`), then runs `capture/capture.py` on it and writes the media
+here.
+
+Then look at every image and at a few frames of the video before committing (see [CHECKLIST.md](CHECKLIST.md)).
+
 ## License
 
-Apache-2.0. See `LICENSE` and `NOTICE`. Third-party licenses are in `THIRD-PARTY-NOTICES`.
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Third-party licenses are in
+[THIRD-PARTY-NOTICES](THIRD-PARTY-NOTICES).
