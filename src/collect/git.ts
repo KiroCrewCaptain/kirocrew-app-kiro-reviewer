@@ -18,6 +18,10 @@ export const GIT_MAX_BUFFER = 2 * 1024 * 1024;
 export const GIT_TIMEOUT_MS = 30_000;
 export const REF_RE = /^[A-Za-z0-9._/@^~-]{1,200}$/;
 
+/** Lines of context around each change, and the fallback when that diff is over the size limit. */
+const WIDE_DIFF_CONTEXT = 50;
+const PLAIN_DIFF_CONTEXT = 3;
+
 export function validateRef(ref: string): void {
   if (!REF_RE.test(ref) || ref.startsWith('-')) {
     throw new ToolError('INVALID_REF', 'The base ref has an unsupported format.');
@@ -412,16 +416,26 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
   }
   if (!/^[0-9a-f]{40}$/.test(mergeBase)) throw new ToolError('NO_MERGE_BASE', 'Could not compute the merge-base.');
 
-  // Step 5: diff from the merge-base. Function-context hunks: each change comes with its whole enclosing function.
-  const diffArgs = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '--function-context', '-M', mergeBase];
-  if (!input.includeUncommitted) diffArgs.push(headSha);
-  diffArgs.push('--');
+  // Step 5: diff from the merge-base, with WIDE_DIFF_CONTEXT lines around each change. A diff over the size limit
+  // falls back to PLAIN_DIFF_CONTEXT lines.
+  const diffWith = async (context: number): Promise<string> => {
+    const diffArgs = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', `-U${context}`, '-M', mergeBase];
+    if (!input.includeUncommitted) diffArgs.push(headSha);
+    diffArgs.push('--');
+    try {
+      return await gitText(top, diffArgs, 'diff.bytes');
+    } catch (e) {
+      if (e instanceof ToolError) throw e;
+      throw new ToolError('GIT_ERROR', 'git diff failed.');
+    }
+  };
   let diff: string;
   try {
-    diff = await gitText(top, diffArgs, 'diff.bytes');
+    diff = await diffWith(WIDE_DIFF_CONTEXT);
+    if (utf8Bytes(diff) > LIMITS.diffBytes) diff = await diffWith(PLAIN_DIFF_CONTEXT);
   } catch (e) {
-    if (e instanceof ToolError) throw e;
-    throw new ToolError('GIT_ERROR', 'git diff failed.');
+    if (!(e instanceof ToolError) || e.code !== 'LIMIT_EXCEEDED') throw e;
+    diff = await diffWith(PLAIN_DIFF_CONTEXT);
   }
   if (diff.trim() === '') throw new ToolError('EMPTY_DIFF', 'There are no changes between the merge-base and HEAD.');
 

@@ -1,12 +1,14 @@
 // Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { execFileSync } from 'node:child_process';
 import { symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { collectRepo, grepRepo, validateRef } from '../src/collect/git.js';
 import { ToolError } from '../src/errors.js';
+import { LIMITS } from '../src/limits.js';
 import { git, makeRepo, rm, tempDir, write } from './helpers.js';
 
 const dirs: string[] = [];
@@ -110,24 +112,38 @@ describe('collectRepo', () => {
     expect(out.rules.reviewMd).toContain('(base)');
   });
 
-  it('sends function-context hunks: the whole changed function, not the rest of the file', async () => {
+  it('sends 50 lines of context around a change', async () => {
     const r = repo();
-    const body = Array.from({ length: 30 }, (_, i) => `  const a${i + 1} = ${i + 1};`);
-    const file = (b: string[]) =>
-      ['export function big() {', ...b, '}', '', 'export function other() {', '  const unrelated = 1;', '}', ''].join('\n');
-    write(r, 'src/big.ts', file(body));
+    const lines = Array.from({ length: 200 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add big');
     git(r, 'branch', 'base2');
-    body[14] = '  const a15 = "changed";';
-    write(r, 'src/big.ts', file(body));
-    git(r, 'commit', '-q', '-am', 'change line 15');
+    lines[99] = 'export const v100 = "changed";';
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'commit', '-q', '-am', 'change line 100');
     const c = await collectRepo({ repoPath: r, base: 'base2', includeUncommitted: false, contextFiles: [] });
-    expect(c.diff).toContain(' export function big() {');
-    expect(c.diff).toContain('   const a1 = 1;');
-    expect(c.diff).toContain('   const a30 = 30;');
-    expect(c.diff).not.toContain('unrelated');
-    expect(c.diff.match(/^@@ /gm)).toHaveLength(1);
+    expect(c.diff).toContain(' export const v50 = 50;');
+    expect(c.diff).toContain(' export const v150 = 150;');
+    expect(c.diff).not.toContain('\n export const v49 = 49;');
+    expect(c.diff).not.toContain('\n export const v151 = 151;');
+  });
+
+  it('falls back to 3 lines of context when the 50-line diff is over the diff size limit', async () => {
+    const r = repo();
+    const lines = Array.from({ length: 60_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add big');
+    git(r, 'branch', 'base2');
+    for (let i = 50; i < lines.length; i += 100) lines[i] = `export const v${i + 1} = "changed";`;
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'commit', '-q', '-am', 'change every 100th line');
+    const wide = execFileSync('git', ['-C', r, 'diff', '-U50', 'base2', 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).length;
+    expect(wide).toBeGreaterThan(LIMITS.diffBytes);
+    const c = await collectRepo({ repoPath: r, base: 'base2', includeUncommitted: false, contextFiles: [] });
+    expect(Buffer.byteLength(c.diff)).toBeLessThan(LIMITS.diffBytes);
+    expect(c.diff.match(/^@@ /gm)!.length).toBeGreaterThan(100);
   });
 
   it('includeUncommitted diffs the working tree; otherwise only commits', async () => {
