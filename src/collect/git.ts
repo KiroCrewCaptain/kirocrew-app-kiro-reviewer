@@ -273,8 +273,9 @@ let grepAttributesPath: string | undefined;
 
 /**
  * An attributes file mapping extensions to GREP_FUNC_DRIVERS. Every other file gets `kcrline`, whose every line is a
- * function start, so -W adds nothing to -C there. Written to a private temp dir that is removed on exit, and
- * rewritten if the OS temp cleaner removed it: git ignores a missing attributes file without an error.
+ * function start, so -W adds nothing to -C there. A repo's own .gitattributes takes precedence over this file.
+ * Written to a private temp dir that is removed on exit, and rewritten if the OS temp cleaner removed it: git
+ * ignores a missing attributes file without an error.
  */
 function grepAttributesFile(): string {
   if (grepAttributesPath && existsSync(grepAttributesPath)) return grepAttributesPath;

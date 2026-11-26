@@ -139,13 +139,13 @@ describe('collectRepo', () => {
     for (let i = 50; i < lines.length; i += 100) lines[i] = `export const v${i + 1} = "changed";`;
     write(r, 'src/big.ts', lines.join('\n') + '\n');
     git(r, 'commit', '-q', '-am', 'change every 100th line');
-    const wide = execFileSync('git', ['-C', r, 'diff', '-U50', 'base2', 'HEAD'], {
-      maxBuffer: 64 * 1024 * 1024,
-    }).length;
-    expect(wide).toBeGreaterThan(LIMITS.diffBytes);
+    const size = (context: number) =>
+      execFileSync('git', ['-C', r, 'diff', `-U${context}`, 'base2', 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).length;
+    expect(size(50)).toBeGreaterThan(LIMITS.diffBytes);
+    expect(size(6)).toBeLessThan(LIMITS.diffBytes);
+    expect(size(3)).toBeLessThan(size(6));
     const c = await collectRepo({ repoPath: r, base: 'base2', includeUncommitted: false, contextFiles: [] });
-    expect(Buffer.byteLength(c.diff)).toBeLessThan(LIMITS.diffBytes);
-    expect(c.diff.match(/^@@ /gm)!.length).toBeGreaterThan(100);
+    expect(Buffer.byteLength(c.diff)).toBe(size(6));
   });
 
   it('falls back to 3 lines of context when the 6-line diff is also over the diff size limit', async () => {
