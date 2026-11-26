@@ -22838,7 +22838,7 @@ var KCRJS_FUNCNAME = [
   "^[ 	]*(" + [
     "(export[ 	]+)?(default[ 	]+)?(async[ 	]+)?function[ 	*].*",
     "(export[ 	]+)?(default[ 	]+)?(abstract[ 	]+)?class[ 	].*",
-    "(export[ 	]+)?(const|let|var)[ 	]+[A-Za-z_$][A-Za-z0-9_$]*[ 	]*(:[^=]*)?=[ 	]*(async[ 	]+)?(\\(|[A-Za-z_$][A-Za-z0-9_$]*[ 	]*=>|function).*",
+    "(export[ 	]+)?(const|let|var)[ 	]+[A-Za-z_$][A-Za-z0-9_$]*[ 	]*(:.*)?=[ 	]*(async[ 	]+)?(\\(.*\\)[ 	]*(:[^=]*)?=>.*|\\(|[A-Za-z_$][A-Za-z0-9_$]*[ 	]*=>.*|function[ 	(*].*)",
     "(export[ 	]+)?(declare[ 	]+)?(interface|enum|namespace|module)[ 	].*",
     "((public|private|protected|static|async|override|abstract|get|set)[ 	]+)+[A-Za-z_$#*][A-Za-z0-9_$]*[ 	]*(<.*>)?\\(.*",
     "[A-Za-z_$#][A-Za-z0-9_$]*[ 	]*(<.*>)?\\(.*\\)[ 	]*(:.*)?\\{[ 	]*",

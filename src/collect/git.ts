@@ -252,7 +252,8 @@ const GREP_FUNC_DRIVERS: Record<string, string[]> = {
 /**
  * Function starts for JavaScript and TypeScript: functions, classes, arrow-function bindings, type declarations,
  * methods and test blocks. A method with no modifier must end in `) {` or `): Type {`, so a call statement such as
- * `run(x);` or `run(x, {` is not a function start. The `!` line excludes control-flow statements.
+ * `run(x);` or `run(x, {` is not a function start. A binding must be followed by `=>`, `function` or an open
+ * parameter list, so `const n = (a + b) * 2;` is not one either. The `!` line excludes control-flow statements.
  */
 const KCRJS_FUNCNAME = [
   '!^[ \t]*(if|else|for|while|do|switch|case|catch|try|return|throw|with|new|await|yield|typeof|delete)([ \t(]|$)',
@@ -260,7 +261,7 @@ const KCRJS_FUNCNAME = [
     [
       '(export[ \t]+)?(default[ \t]+)?(async[ \t]+)?function[ \t*].*',
       '(export[ \t]+)?(default[ \t]+)?(abstract[ \t]+)?class[ \t].*',
-      '(export[ \t]+)?(const|let|var)[ \t]+[A-Za-z_$][A-Za-z0-9_$]*[ \t]*(:[^=]*)?=[ \t]*(async[ \t]+)?(\\(|[A-Za-z_$][A-Za-z0-9_$]*[ \t]*=>|function).*',
+      '(export[ \t]+)?(const|let|var)[ \t]+[A-Za-z_$][A-Za-z0-9_$]*[ \t]*(:.*)?=[ \t]*(async[ \t]+)?(\\(.*\\)[ \t]*(:[^=]*)?=>.*|\\(|[A-Za-z_$][A-Za-z0-9_$]*[ \t]*=>.*|function[ \t(*].*)',
       '(export[ \t]+)?(declare[ \t]+)?(interface|enum|namespace|module)[ \t].*',
       '((public|private|protected|static|async|override|abstract|get|set)[ \t]+)+[A-Za-z_$#*][A-Za-z0-9_$]*[ \t]*(<.*>)?\\(.*',
       '[A-Za-z_$#][A-Za-z0-9_$]*[ \t]*(<.*>)?\\(.*\\)[ \t]*(:.*)?\\{[ \t]*',

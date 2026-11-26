@@ -421,6 +421,7 @@ describe('grepRepo', () => {
         '  setup(a, {',
         '    x: 1,',
         '  });',
+        '  const total = (a + 1) * 2;',
         ...body(8),
         '  return needle(a);',
         '}',
@@ -429,9 +430,26 @@ describe('grepRepo', () => {
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add calls');
     const out = await grepRepo(r, head(r), 'needle', false);
-    // The match is line 23; -C 6 alone would start at line 17.
+    // The match is line 24; -C 6 alone would start at line 18.
     expect(out[0]).toBe('src/calls.ts-2- export function withCalls(a: number): number {');
-    expect(out.at(-1)).toBe('src/calls.ts-24- }');
+    expect(out.at(-1)).toBe('src/calls.ts-25- }');
+  });
+
+  it('treats an arrow-function binding as a function start', async () => {
+    const r = repo();
+    const body = Array.from({ length: 10 }, (_, i) => `  const v${i} = ${i};`);
+    write(
+      r,
+      'src/arrow.ts',
+      ['', 'export const handler = async (cb: () => void): Promise<void> => {', ...body, '  needle(cb);', '};'].join(
+        '\n',
+      ) + '\n',
+    );
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add arrow');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    // The match is line 13; -C 6 alone would start at line 7.
+    expect(out[0]).toBe('src/arrow.ts-2- export const handler = async (cb: () => void): Promise<void> => {');
   });
 
   it('treats a describe/it/test block as the enclosing function', async () => {
