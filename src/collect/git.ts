@@ -20,7 +20,7 @@ export const REF_RE = /^[A-Za-z0-9._/@^~-]{1,200}$/;
 
 /** Lines of context around each change, and the fallback when that diff is over the size limit. */
 const WIDE_DIFF_CONTEXT = 50;
-const PLAIN_DIFF_CONTEXT = 3;
+const PLAIN_DIFF_CONTEXT = 6;
 
 export function validateRef(ref: string): void {
   if (!REF_RE.test(ref) || ref.startsWith('-')) {
@@ -222,7 +222,7 @@ export async function readRepoFile(
 export const decodeRepoText = (buf: Buffer): string | null => decodeText(buf);
 
 export const GREP_MAX_MATCHES = 20;
-export const GREP_CONTEXT_LINES = 3;
+export const GREP_CONTEXT_LINES = 6;
 export const GREP_LINE_CHARS = 200;
 export const GREP_MAX_BYTES = 32 * 1024;
 

@@ -39963,7 +39963,7 @@ var GIT_MAX_BUFFER = 2 * 1024 * 1024;
 var GIT_TIMEOUT_MS = 3e4;
 var REF_RE = /^[A-Za-z0-9._/@^~-]{1,200}$/;
 var WIDE_DIFF_CONTEXT = 50;
-var PLAIN_DIFF_CONTEXT = 3;
+var PLAIN_DIFF_CONTEXT = 6;
 function validateRef(ref) {
   if (!REF_RE.test(ref) || ref.startsWith("-")) {
     throw new ToolError("INVALID_REF", "The base ref has an unsupported format.");
@@ -40121,7 +40121,7 @@ async function readRepoFile(top, headSha, posix, includeUncommitted) {
 __name(readRepoFile, "readRepoFile");
 var decodeRepoText = /* @__PURE__ */ __name((buf) => decodeText(buf), "decodeRepoText");
 var GREP_MAX_MATCHES = 20;
-var GREP_CONTEXT_LINES = 3;
+var GREP_CONTEXT_LINES = 6;
 var GREP_LINE_CHARS = 200;
 var GREP_MAX_BYTES = 32 * 1024;
 function gitGrep(cwd, args) {

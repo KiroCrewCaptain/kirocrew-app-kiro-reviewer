@@ -129,7 +129,7 @@ describe('collectRepo', () => {
     expect(c.diff).not.toContain('\n export const v151 = 151;');
   });
 
-  it('falls back to 3 lines of context when the 50-line diff is over the diff size limit', async () => {
+  it('falls back to 6 lines of context when the 50-line diff is over the diff size limit', async () => {
     const r = repo();
     const lines = Array.from({ length: 60_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
     write(r, 'src/big.ts', lines.join('\n') + '\n');
@@ -239,27 +239,39 @@ describe('grepRepo', () => {
     '\n';
   const head = (r: string) => git(r, 'rev-parse', 'HEAD').trim();
 
-  it('returns 3 lines either side of each match, marks matches with ":" and context with "-", and splits blocks with "--"', async () => {
+  it('returns 6 lines either side of each match, marks matches with ":" and context with "-", and splits blocks with "--"', async () => {
     const r = repo();
-    write(r, 'src/a.ts', lines(20, [5, 16]));
+    write(r, 'src/a.ts', lines(30, [8, 23]));
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add a');
     expect(await grepRepo(r, head(r), 'needle', false)).toEqual([
       'src/a.ts-2- line 2',
       'src/a.ts-3- line 3',
       'src/a.ts-4- line 4',
-      'src/a.ts:5: call needle() 5',
+      'src/a.ts-5- line 5',
       'src/a.ts-6- line 6',
       'src/a.ts-7- line 7',
-      'src/a.ts-8- line 8',
-      '--',
+      'src/a.ts:8: call needle() 8',
+      'src/a.ts-9- line 9',
+      'src/a.ts-10- line 10',
+      'src/a.ts-11- line 11',
+      'src/a.ts-12- line 12',
       'src/a.ts-13- line 13',
       'src/a.ts-14- line 14',
-      'src/a.ts-15- line 15',
-      'src/a.ts:16: call needle() 16',
+      '--',
       'src/a.ts-17- line 17',
       'src/a.ts-18- line 18',
       'src/a.ts-19- line 19',
+      'src/a.ts-20- line 20',
+      'src/a.ts-21- line 21',
+      'src/a.ts-22- line 22',
+      'src/a.ts:23: call needle() 23',
+      'src/a.ts-24- line 24',
+      'src/a.ts-25- line 25',
+      'src/a.ts-26- line 26',
+      'src/a.ts-27- line 27',
+      'src/a.ts-28- line 28',
+      'src/a.ts-29- line 29',
     ]);
   });
 
@@ -282,17 +294,20 @@ describe('grepRepo', () => {
 
   it('ends at the 20th match and its trailing context, without leading context of a 21st', async () => {
     const r = repo();
-    const hits = Array.from({ length: 21 }, (_, i) => 4 + i * 10);
-    write(r, 'src/spread.ts', lines(220, hits));
+    const hits = Array.from({ length: 21 }, (_, i) => 4 + i * 20);
+    write(r, 'src/spread.ts', lines(440, hits));
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add spread');
     const out = await grepRepo(r, head(r), 'needle', false);
     expect(out.filter((l) => l.startsWith('src/spread.ts:'))).toHaveLength(20);
-    expect(out.slice(-4)).toEqual([
-      'src/spread.ts:194: call needle() 194',
-      'src/spread.ts-195- line 195',
-      'src/spread.ts-196- line 196',
-      'src/spread.ts-197- line 197',
+    expect(out.slice(-7)).toEqual([
+      'src/spread.ts:384: call needle() 384',
+      'src/spread.ts-385- line 385',
+      'src/spread.ts-386- line 386',
+      'src/spread.ts-387- line 387',
+      'src/spread.ts-388- line 388',
+      'src/spread.ts-389- line 389',
+      'src/spread.ts-390- line 390',
     ]);
   });
 
