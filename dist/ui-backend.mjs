@@ -22646,7 +22646,8 @@ __name(checkRequestPath, "checkRequestPath");
 
 // src/collect/git.ts
 import { execFile } from "node:child_process";
-import { realpathSync as realpathSync2, statSync as statSync3, readFileSync as readFileSync3 } from "node:fs";
+import { realpathSync as realpathSync2, statSync as statSync3, readFileSync as readFileSync3, mkdtempSync, writeFileSync as writeFileSync2 } from "node:fs";
+import { tmpdir } from "node:os";
 import path4 from "node:path";
 var GIT_MAX_BUFFER = 2 * 1024 * 1024;
 var GIT_TIMEOUT_MS = 3e4;
@@ -22813,6 +22814,54 @@ var GREP_MAX_MATCHES = 20;
 var GREP_CONTEXT_LINES = 6;
 var GREP_LINE_CHARS = 200;
 var GREP_MAX_BYTES = 32 * 1024;
+var GREP_FUNC_DRIVERS = {
+  kcrjs: ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"],
+  python: ["py", "pyi"],
+  golang: ["go"],
+  rust: ["rs"],
+  java: ["java"],
+  kotlin: ["kt", "kts"],
+  csharp: ["cs"],
+  cpp: ["c", "h", "cc", "cpp", "cxx", "hh", "hpp", "hxx"],
+  objc: ["m", "mm"],
+  ruby: ["rb"],
+  php: ["php"],
+  bash: ["sh", "bash", "zsh"],
+  perl: ["pl", "pm"],
+  elixir: ["ex", "exs"],
+  css: ["css", "scss", "less"],
+  html: ["html", "htm"],
+  markdown: ["md"]
+};
+var KCRJS_FUNCNAME = [
+  "!^[ 	]*(if|else|for|while|do|switch|case|catch|try|return|throw|with|new|await|yield|typeof|delete)([ 	(]|$)",
+  "^[ 	]*(" + [
+    "(export[ 	]+)?(default[ 	]+)?(async[ 	]+)?function[ 	*].*",
+    "(export[ 	]+)?(default[ 	]+)?(abstract[ 	]+)?class[ 	].*",
+    "(export[ 	]+)?(const|let|var)[ 	]+[A-Za-z_$][A-Za-z0-9_$]*[ 	]*(:[^=]*)?=[ 	]*(async[ 	]+)?(\\(|[A-Za-z_$][A-Za-z0-9_$]*[ 	]*=>|function).*",
+    "(export[ 	]+)?(declare[ 	]+)?(interface|enum|namespace|module)[ 	].*",
+    "((public|private|protected|static|async|readonly|override|abstract|get|set)[ 	]+)*[A-Za-z_$#][A-Za-z0-9_$]*[ 	]*(<.*>)?\\(.*"
+  ].join("|") + ")$"
+].join("\n");
+var grepAttributesPath;
+function grepAttributesFile() {
+  if (grepAttributesPath) return grepAttributesPath;
+  const lines = ["* diff=kcrline"];
+  for (const [driver, exts] of Object.entries(GREP_FUNC_DRIVERS))
+    for (const ext of exts) lines.push(`*.${ext} diff=${driver}`);
+  const file2 = path4.join(mkdtempSync(path4.join(tmpdir(), "kcr-grep-")), "gitattributes");
+  writeFileSync2(file2, lines.join("\n") + "\n", { flag: "wx" });
+  return grepAttributesPath = file2;
+}
+__name(grepAttributesFile, "grepAttributesFile");
+var grepFunctionConfig = /* @__PURE__ */ __name(() => [
+  "-c",
+  `core.attributesFile=${grepAttributesFile()}`,
+  "-c",
+  `diff.kcrjs.xfuncname=${KCRJS_FUNCNAME}`,
+  "-c",
+  "diff.kcrline.xfuncname=^"
+], "grepFunctionConfig");
 function gitGrep(cwd, args) {
   return new Promise((resolve, reject) => {
     execFile(
@@ -22852,7 +22901,20 @@ function parseGrep(out, headSha, includeUncommitted) {
 }
 __name(parseGrep, "parseGrep");
 async function grepRepo(top, headSha, query, includeUncommitted) {
-  const args = ["grep", "-z", "-n", "-I", "-F", "--no-color", "-C", String(GREP_CONTEXT_LINES), "-e", query];
+  const args = [
+    ...grepFunctionConfig(),
+    "grep",
+    "-z",
+    "-n",
+    "-I",
+    "-F",
+    "--no-color",
+    "-W",
+    "-C",
+    String(GREP_CONTEXT_LINES),
+    "-e",
+    query
+  ];
   if (!includeUncommitted) args.push(headSha);
   args.push("--");
   const lines = parseGrep((await gitGrep(top, args)).toString("utf8"), headSha, includeUncommitted);
@@ -22860,27 +22922,25 @@ async function grepRepo(top, headSha, query, includeUncommitted) {
   let bytes = 0;
   let matches = 0;
   let last = null;
-  let lastMatch = null;
+  let inMatchBlock = false;
   let keep = 0;
   for (const l of lines) {
     const isMatch = l.text.includes(query);
-    const inTail = lastMatch !== null && lastMatch.file === l.file && l.lineNo <= lastMatch.lineNo + GREP_CONTEXT_LINES;
+    const adjacent = last !== null && last.file === l.file && last.lineNo + 1 === l.lineNo;
+    const inTail = !isMatch && adjacent && inMatchBlock;
     if (matches >= GREP_MAX_MATCHES && (isMatch || !inTail)) break;
     const chars = [...l.text];
     const text = chars.length > GREP_LINE_CHARS ? chars.slice(0, GREP_LINE_CHARS - 1).join("") + "\u2026" : chars.join("");
     const mark = isMatch ? ":" : "-";
-    const adjacent = last !== null && last.file === l.file && last.lineNo + 1 === l.lineNo;
     const block = [...last !== null && !adjacent ? ["--"] : [], `${l.file}${mark}${l.lineNo}${mark} ${text}`];
     const size = block.reduce((n, x) => n + Buffer.byteLength(x, "utf8") + 1, 0);
     if (bytes + size > GREP_MAX_BYTES) break;
     bytes += size;
     out.push(...block);
     last = l;
-    if (isMatch) {
-      matches++;
-      lastMatch = l;
-    }
-    if (isMatch || inTail) keep = out.length;
+    if (isMatch) matches++;
+    inMatchBlock = isMatch || inTail;
+    if (inMatchBlock) keep = out.length;
   }
   return out.slice(0, keep);
 }
@@ -23354,7 +23414,7 @@ __name(buildContextSummaryMarkdown, "buildContextSummaryMarkdown");
 
 // src/staging.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
-import { chmodSync as chmodSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync4, readdirSync, rmSync as rmSync2, statSync as statSync4, writeFileSync as writeFileSync2 } from "node:fs";
+import { chmodSync as chmodSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync4, readdirSync, rmSync as rmSync2, statSync as statSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import path5 from "node:path";
 var STAGING_TTL_MS = 30 * 60 * 1e3;
 var PREPARED_ID_RE = /^prep-[0-9a-f]{16}$/;
@@ -23404,7 +23464,7 @@ __name(cleanupExpired, "cleanupExpired");
 function stagePayload(dataDir, preparedId, staged) {
   ensureDir(dataDir);
   const file2 = fileFor(dataDir, preparedId);
-  writeFileSync2(file2, JSON.stringify(staged), { mode: 384, flag: "wx" });
+  writeFileSync3(file2, JSON.stringify(staged), { mode: 384, flag: "wx" });
   chmodSync2(file2, 384);
   return file2;
 }
@@ -23595,7 +23655,7 @@ async function contextPrepareTool(input2, deps) {
 __name(contextPrepareTool, "contextPrepareTool");
 
 // src/payloadStore.ts
-import { chmodSync as chmodSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync5, renameSync as renameSync2, rmSync as rmSync3, writeFileSync as writeFileSync3 } from "node:fs";
+import { chmodSync as chmodSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync5, renameSync as renameSync2, rmSync as rmSync3, writeFileSync as writeFileSync4 } from "node:fs";
 import path7 from "node:path";
 var SUBMISSION_RE = /^iteration-([1-9][0-9]{0,3})\.json$/;
 var ROUND_RE = /^iteration-([1-9][0-9]{0,3})-context-([1-9][0-9]{0,3})\.json$/;
@@ -23609,7 +23669,7 @@ function writeJson(dir, name, value) {
   chmodSync3(dir, 448);
   const file2 = path7.join(dir, name);
   const tmp = `${file2}.${process.pid}.tmp`;
-  writeFileSync3(tmp, JSON.stringify(value), { mode: 384 });
+  writeFileSync4(tmp, JSON.stringify(value), { mode: 384 });
   renameSync2(tmp, file2);
   chmodSync3(file2, 384);
 }
@@ -24428,7 +24488,7 @@ async function statusTool(input2, deps) {
 __name(statusTool, "statusTool");
 
 // src/history.ts
-import { chmodSync as chmodSync4, mkdirSync as mkdirSync4, readFileSync as readFileSync6, renameSync as renameSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { chmodSync as chmodSync4, mkdirSync as mkdirSync4, readFileSync as readFileSync6, renameSync as renameSync3, writeFileSync as writeFileSync5 } from "node:fs";
 import path9 from "node:path";
 var HISTORY_MAX = 100;
 var fileFor2 = /* @__PURE__ */ __name((dataDir) => path9.join(dataDir, "reviews.json"), "fileFor");
@@ -24456,7 +24516,7 @@ function recordReview(dataDir, entry) {
   mkdirSync4(dataDir, { recursive: true, mode: 448 });
   const file2 = fileFor2(dataDir);
   const tmp = `${file2}.${process.pid}.tmp`;
-  writeFileSync4(tmp, JSON.stringify(next), { mode: 384 });
+  writeFileSync5(tmp, JSON.stringify(next), { mode: 384 });
   renameSync3(tmp, file2);
   chmodSync4(file2, 384);
   for (const dropped of all.slice(HISTORY_MAX)) deleteStored(dataDir, dropped.reviewId);
@@ -24676,7 +24736,7 @@ ${JSON.stringify(result.structuredContent)}`;
 __name(callAgentTool, "callAgentTool");
 
 // src/ui/serviceApis.ts
-import { chmodSync as chmodSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync4, writeFileSync as writeFileSync5 } from "node:fs";
+import { chmodSync as chmodSync5, mkdirSync as mkdirSync5, readFileSync as readFileSync7, renameSync as renameSync4, writeFileSync as writeFileSync6 } from "node:fs";
 import path10 from "node:path";
 var FEEDBACK_COMMENT_MAX = 500;
 var VOTES = ["up", "down"];
@@ -24722,7 +24782,7 @@ function writeFeedbackFile(dataDir, data2) {
   mkdirSync5(dataDir, { recursive: true, mode: 448 });
   const file2 = feedbackFile(dataDir);
   const tmp = `${file2}.${process.pid}.tmp`;
-  writeFileSync5(tmp, JSON.stringify(data2), { mode: 384 });
+  writeFileSync6(tmp, JSON.stringify(data2), { mode: 384 });
   renameSync4(tmp, file2);
   chmodSync5(file2, 384);
 }
@@ -24784,7 +24844,7 @@ function writeUnsuppressed(dataDir, data2) {
   mkdirSync5(dataDir, { recursive: true, mode: 448 });
   const file2 = unsuppressedFile(dataDir);
   const tmp = `${file2}.${process.pid}.tmp`;
-  writeFileSync5(tmp, JSON.stringify(data2), { mode: 384 });
+  writeFileSync6(tmp, JSON.stringify(data2), { mode: 384 });
   renameSync4(tmp, file2);
   chmodSync5(file2, 384);
 }

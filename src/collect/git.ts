@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { execFile } from 'node:child_process';
-import { realpathSync, statSync, readFileSync } from 'node:fs';
+import { realpathSync, statSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ToolError } from '../errors.js';
 import type { LimitName } from '../limits.js';
@@ -226,6 +227,70 @@ export const GREP_CONTEXT_LINES = 6;
 export const GREP_LINE_CHARS = 200;
 export const GREP_MAX_BYTES = 32 * 1024;
 
+/** git's built-in function-name drivers by file extension, plus `kcrjs` for JavaScript and TypeScript. */
+const GREP_FUNC_DRIVERS: Record<string, string[]> = {
+  kcrjs: ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'],
+  python: ['py', 'pyi'],
+  golang: ['go'],
+  rust: ['rs'],
+  java: ['java'],
+  kotlin: ['kt', 'kts'],
+  csharp: ['cs'],
+  cpp: ['c', 'h', 'cc', 'cpp', 'cxx', 'hh', 'hpp', 'hxx'],
+  objc: ['m', 'mm'],
+  ruby: ['rb'],
+  php: ['php'],
+  bash: ['sh', 'bash', 'zsh'],
+  perl: ['pl', 'pm'],
+  elixir: ['ex', 'exs'],
+  css: ['css', 'scss', 'less'],
+  html: ['html', 'htm'],
+  markdown: ['md'],
+};
+
+/**
+ * Function starts for JavaScript and TypeScript: functions, classes, arrow-function bindings, type declarations and
+ * methods. The `!` line excludes control-flow statements that look like method calls.
+ */
+const KCRJS_FUNCNAME = [
+  '!^[ \t]*(if|else|for|while|do|switch|case|catch|try|return|throw|with|new|await|yield|typeof|delete)([ \t(]|$)',
+  '^[ \t]*(' +
+    [
+      '(export[ \t]+)?(default[ \t]+)?(async[ \t]+)?function[ \t*].*',
+      '(export[ \t]+)?(default[ \t]+)?(abstract[ \t]+)?class[ \t].*',
+      '(export[ \t]+)?(const|let|var)[ \t]+[A-Za-z_$][A-Za-z0-9_$]*[ \t]*(:[^=]*)?=[ \t]*(async[ \t]+)?(\\(|[A-Za-z_$][A-Za-z0-9_$]*[ \t]*=>|function).*',
+      '(export[ \t]+)?(declare[ \t]+)?(interface|enum|namespace|module)[ \t].*',
+      '((public|private|protected|static|async|readonly|override|abstract|get|set)[ \t]+)*[A-Za-z_$#][A-Za-z0-9_$]*[ \t]*(<.*>)?\\(.*',
+    ].join('|') +
+    ')$',
+].join('\n');
+
+let grepAttributesPath: string | undefined;
+
+/**
+ * An attributes file mapping extensions to GREP_FUNC_DRIVERS. Every other file gets `kcrline`, whose every line is a
+ * function start, so -W adds nothing to -C there. Written once per process to a private temp dir.
+ */
+function grepAttributesFile(): string {
+  if (grepAttributesPath) return grepAttributesPath;
+  const lines = ['* diff=kcrline'];
+  for (const [driver, exts] of Object.entries(GREP_FUNC_DRIVERS))
+    for (const ext of exts) lines.push(`*.${ext} diff=${driver}`);
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'kcr-grep-')), 'gitattributes');
+  writeFileSync(file, lines.join('\n') + '\n', { flag: 'wx' });
+  return (grepAttributesPath = file);
+}
+
+/** git config for -W: the attributes file and the two custom drivers. */
+const grepFunctionConfig = (): string[] => [
+  '-c',
+  `core.attributesFile=${grepAttributesFile()}`,
+  '-c',
+  `diff.kcrjs.xfuncname=${KCRJS_FUNCNAME}`,
+  '-c',
+  'diff.kcrline.xfuncname=^',
+];
+
 /** Runs git grep; exit 1 (no match) is an empty result, and output past the buffer cap is truncated. */
 function gitGrep(cwd: string, args: string[]): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -274,7 +339,7 @@ function parseGrep(out: string, headSha: string, includeUncommitted: boolean): G
 
 /**
  * Fixed-string search over text files (at HEAD, or the working tree with includeUncommitted), with
- * GREP_CONTEXT_LINES lines either side of each match. Lines in denylisted or malformed paths are dropped.
+ * the enclosing function (-W) and GREP_CONTEXT_LINES lines either side of each match. Lines in denylisted or malformed paths are dropped.
  * Returns `path:line: text` for a match and `path-line- text` for context, with `--` between
  * non-adjacent blocks. At most 20 matches, 200 chars per line and 32 KB in total.
  */
@@ -284,7 +349,20 @@ export async function grepRepo(
   query: string,
   includeUncommitted: boolean,
 ): Promise<string[]> {
-  const args = ['grep', '-z', '-n', '-I', '-F', '--no-color', '-C', String(GREP_CONTEXT_LINES), '-e', query];
+  const args = [
+    ...grepFunctionConfig(),
+    'grep',
+    '-z',
+    '-n',
+    '-I',
+    '-F',
+    '--no-color',
+    '-W',
+    '-C',
+    String(GREP_CONTEXT_LINES),
+    '-e',
+    query,
+  ];
   if (!includeUncommitted) args.push(headSha);
   args.push('--');
   const lines = parseGrep((await gitGrep(top, args)).toString('utf8'), headSha, includeUncommitted);
@@ -292,29 +370,28 @@ export async function grepRepo(
   let bytes = 0;
   let matches = 0;
   let last: GrepLine | null = null;
-  let lastMatch: GrepLine | null = null;
+  // True while the current block has had a match: the lines after it are its trailing context.
+  let inMatchBlock = false;
   // Output length through the last match and its trailing context; lines past it lead into a match a cap cut off.
   let keep = 0;
   for (const l of lines) {
     // With -z, git prints match and context lines alike; for a fixed-string search a match is a line holding the query.
     const isMatch = l.text.includes(query);
-    const inTail = lastMatch !== null && lastMatch.file === l.file && l.lineNo <= lastMatch.lineNo + GREP_CONTEXT_LINES;
+    const adjacent = last !== null && last.file === l.file && last.lineNo + 1 === l.lineNo;
+    const inTail: boolean = !isMatch && adjacent && inMatchBlock;
     if (matches >= GREP_MAX_MATCHES && (isMatch || !inTail)) break;
     const chars = [...l.text];
     const text = chars.length > GREP_LINE_CHARS ? chars.slice(0, GREP_LINE_CHARS - 1).join('') + '…' : chars.join('');
     const mark = isMatch ? ':' : '-';
-    const adjacent = last !== null && last.file === l.file && last.lineNo + 1 === l.lineNo;
     const block = [...(last !== null && !adjacent ? ['--'] : []), `${l.file}${mark}${l.lineNo}${mark} ${text}`];
     const size = block.reduce((n, x) => n + Buffer.byteLength(x, 'utf8') + 1, 0);
     if (bytes + size > GREP_MAX_BYTES) break;
     bytes += size;
     out.push(...block);
     last = l;
-    if (isMatch) {
-      matches++;
-      lastMatch = l;
-    }
-    if (isMatch || inTail) keep = out.length;
+    if (isMatch) matches++;
+    inMatchBlock = isMatch || inTail;
+    if (inMatchBlock) keep = out.length;
   }
   return out.slice(0, keep);
 }
