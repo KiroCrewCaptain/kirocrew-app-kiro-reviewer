@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { execFile } from 'node:child_process';
-import { realpathSync, statSync, readFileSync } from 'node:fs';
+import { existsSync, realpathSync, rmSync, statSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ToolError } from '../errors.js';
 import type { LimitName } from '../limits.js';
@@ -18,9 +19,8 @@ export const GIT_MAX_BUFFER = 2 * 1024 * 1024;
 export const GIT_TIMEOUT_MS = 30_000;
 export const REF_RE = /^[A-Za-z0-9._/@^~-]{1,200}$/;
 
-/** Lines of context around each change, and the fallback when that diff is over the size limit. */
-const WIDE_DIFF_CONTEXT = 50;
-const PLAIN_DIFF_CONTEXT = 3;
+/** Lines of context around each change, widest first. The first diff within the size limit is used. */
+const DIFF_CONTEXT_TIERS = [50, 6, 3];
 
 export function validateRef(ref: string): void {
   if (!REF_RE.test(ref) || ref.startsWith('-')) {
@@ -222,9 +222,83 @@ export async function readRepoFile(
 export const decodeRepoText = (buf: Buffer): string | null => decodeText(buf);
 
 export const GREP_MAX_MATCHES = 20;
-export const GREP_CONTEXT_LINES = 3;
+export const GREP_CONTEXT_LINES = 6;
+/** Most lines of enclosing-function context kept either side of a match. */
+export const GREP_FUNCTION_LINES = 40;
 export const GREP_LINE_CHARS = 200;
 export const GREP_MAX_BYTES = 32 * 1024;
+
+/** git's built-in function-name drivers by file extension, plus `kcrjs` for JavaScript and TypeScript. */
+const GREP_FUNC_DRIVERS: Record<string, string[]> = {
+  kcrjs: ['ts', 'tsx', 'mts', 'cts', 'js', 'jsx', 'mjs', 'cjs'],
+  python: ['py', 'pyi'],
+  golang: ['go'],
+  rust: ['rs'],
+  java: ['java'],
+  kotlin: ['kt', 'kts'],
+  csharp: ['cs'],
+  cpp: ['c', 'h', 'cc', 'cpp', 'cxx', 'hh', 'hpp', 'hxx'],
+  objc: ['m', 'mm'],
+  ruby: ['rb'],
+  php: ['php'],
+  bash: ['sh', 'bash', 'zsh'],
+  perl: ['pl', 'pm'],
+  elixir: ['ex', 'exs'],
+  css: ['css', 'scss', 'less'],
+  html: ['html', 'htm'],
+  markdown: ['md'],
+};
+
+/**
+ * Function starts for JavaScript and TypeScript: functions, classes, arrow-function bindings, type declarations,
+ * methods and test blocks. A method with no modifier must end in `) {` or `): Type {`, so a call statement such as
+ * `run(x);` or `run(x, {` is not a function start. A binding must be followed by `=>`, `function` or an open
+ * parameter list, so `const n = (a + b) * 2;` is not one either. The `!` line excludes control-flow statements.
+ */
+const KCRJS_FUNCNAME = [
+  '!^[ \t]*(if|else|for|while|do|switch|case|catch|try|return|throw|with|new|await|yield|typeof|delete)([ \t(]|$)',
+  '^[ \t]*(' +
+    [
+      '(export[ \t]+)?(default[ \t]+)?(async[ \t]+)?function[ \t*].*',
+      '(export[ \t]+)?(default[ \t]+)?(abstract[ \t]+)?class[ \t].*',
+      '(export[ \t]+)?(const|let|var)[ \t]+[A-Za-z_$][A-Za-z0-9_$]*[ \t]*(:.*)?=[ \t]*(async[ \t]+)?(\\(.*\\)[ \t]*(:[^=]*)?=>.*|\\(|[A-Za-z_$][A-Za-z0-9_$]*[ \t]*=>.*|function[ \t(*].*)',
+      '(export[ \t]+)?(declare[ \t]+)?(interface|enum|namespace|module)[ \t].*',
+      '((public|private|protected|static|async|override|abstract|get|set)[ \t]+)+[A-Za-z_$#*][A-Za-z0-9_$]*[ \t]*(<.*>)?\\(.*',
+      '[A-Za-z_$#][A-Za-z0-9_$]*[ \t]*(<.*>)?\\(.*\\)[ \t]*(:.*)?\\{[ \t]*',
+      '(describe|it|test)(\\.[A-Za-z]+)*[ \t]*\\(.*',
+    ].join('|') +
+    ')$',
+].join('\n');
+
+let grepAttributesPath: string | undefined;
+
+/**
+ * An attributes file mapping extensions to GREP_FUNC_DRIVERS. Every other file gets `kcrline`, whose every line is a
+ * function start, so -W adds nothing to -C there. A repo's own .gitattributes takes precedence over this file.
+ * Written to a private temp dir that is removed on exit, and rewritten if the OS temp cleaner removed it: git
+ * ignores a missing attributes file without an error.
+ */
+function grepAttributesFile(): string {
+  if (grepAttributesPath && existsSync(grepAttributesPath)) return grepAttributesPath;
+  const lines = ['* diff=kcrline'];
+  for (const [driver, exts] of Object.entries(GREP_FUNC_DRIVERS))
+    for (const ext of exts) lines.push(`*.${ext} diff=${driver}`);
+  const dir = mkdtempSync(path.join(tmpdir(), 'kcr-grep-'));
+  process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'gitattributes');
+  writeFileSync(file, lines.join('\n') + '\n', { flag: 'wx' });
+  return (grepAttributesPath = file);
+}
+
+/** git config for -W: the attributes file and the two custom drivers. */
+const grepFunctionConfig = (): string[] => [
+  '-c',
+  `core.attributesFile=${grepAttributesFile()}`,
+  '-c',
+  `diff.kcrjs.xfuncname=${KCRJS_FUNCNAME}`,
+  '-c',
+  'diff.kcrline.xfuncname=^',
+];
 
 /** Runs git grep; exit 1 (no match) is an empty result, and output past the buffer cap is truncated. */
 function gitGrep(cwd: string, args: string[]): Promise<Buffer> {
@@ -246,6 +320,28 @@ function gitGrep(cwd: string, args: string[]): Promise<Buffer> {
         reject(new ToolError('GIT_ERROR', 'git grep failed.'));
       },
     );
+  });
+}
+
+/**
+ * Drops lines more than GREP_FUNCTION_LINES from every match in their file, so the lead-in to a match deep in a long
+ * function cannot use up the byte budget before the match itself. Both lists are in git's order: by file, then line.
+ */
+function nearMatches(lines: GrepLine[], matched: GrepLine[]): GrepLine[] {
+  const byFile = new Map<string, number[]>();
+  for (const m of matched) {
+    const nums = byFile.get(m.file);
+    if (nums) nums.push(m.lineNo);
+    else byFile.set(m.file, [m.lineNo]);
+  }
+  const next = new Map<string, number>();
+  return lines.filter((l) => {
+    const nums = byFile.get(l.file);
+    if (!nums) return false;
+    let i = next.get(l.file) ?? 0;
+    while (i < nums.length && nums[i] < l.lineNo - GREP_FUNCTION_LINES) i++;
+    next.set(l.file, i);
+    return i < nums.length && nums[i] <= l.lineNo + GREP_FUNCTION_LINES;
   });
 }
 
@@ -273,10 +369,11 @@ function parseGrep(out: string, headSha: string, includeUncommitted: boolean): G
 }
 
 /**
- * Fixed-string search over text files (at HEAD, or the working tree with includeUncommitted), with
- * GREP_CONTEXT_LINES lines either side of each match. Lines in denylisted or malformed paths are dropped.
- * Returns `path:line: text` for a match and `path-line- text` for context, with `--` between
- * non-adjacent blocks. At most 20 matches, 200 chars per line and 32 KB in total.
+ * Fixed-string search over text files (at HEAD, or the working tree with includeUncommitted). Each match comes with
+ * GREP_CONTEXT_LINES lines either side and its enclosing function (-W), the function kept up to GREP_FUNCTION_LINES
+ * lines either side. Lines in denylisted or malformed paths are dropped. Returns `path:line: text` for a match and
+ * `path-line- text` for context, with `--` between non-adjacent blocks. At most 20 matches, 200 chars per line and
+ * 32 KB in total.
  */
 export async function grepRepo(
   top: string,
@@ -284,37 +381,52 @@ export async function grepRepo(
   query: string,
   includeUncommitted: boolean,
 ): Promise<string[]> {
-  const args = ['grep', '-z', '-n', '-I', '-F', '--no-color', '-C', String(GREP_CONTEXT_LINES), '-e', query];
+  const args = [
+    ...grepFunctionConfig(),
+    'grep',
+    '-z',
+    '-n',
+    '-I',
+    '-F',
+    '--no-color',
+    '-W',
+    '-C',
+    String(GREP_CONTEXT_LINES),
+    '-e',
+    query,
+  ];
   if (!includeUncommitted) args.push(headSha);
   args.push('--');
-  const lines = parseGrep((await gitGrep(top, args)).toString('utf8'), headSha, includeUncommitted);
+  const all = parseGrep((await gitGrep(top, args)).toString('utf8'), headSha, includeUncommitted);
+  // With -z, git prints match and context lines alike; for a fixed-string search a match is a line holding the query.
+  const isMatchLine = (l: GrepLine) => l.text.includes(query);
+  // Only the matches that can be returned: lines that lead into a match past the cap are not context.
+  const lines = nearMatches(all, all.filter(isMatchLine).slice(0, GREP_MAX_MATCHES));
   const out: string[] = [];
   let bytes = 0;
   let matches = 0;
   let last: GrepLine | null = null;
-  let lastMatch: GrepLine | null = null;
+  // True while the current block has had a match: the lines after it are its trailing context.
+  let inMatchBlock = false;
   // Output length through the last match and its trailing context; lines past it lead into a match a cap cut off.
   let keep = 0;
   for (const l of lines) {
-    // With -z, git prints match and context lines alike; for a fixed-string search a match is a line holding the query.
-    const isMatch = l.text.includes(query);
-    const inTail = lastMatch !== null && lastMatch.file === l.file && l.lineNo <= lastMatch.lineNo + GREP_CONTEXT_LINES;
+    const isMatch = isMatchLine(l);
+    const adjacent = last !== null && last.file === l.file && last.lineNo + 1 === l.lineNo;
+    const inTail: boolean = !isMatch && adjacent && inMatchBlock;
     if (matches >= GREP_MAX_MATCHES && (isMatch || !inTail)) break;
     const chars = [...l.text];
     const text = chars.length > GREP_LINE_CHARS ? chars.slice(0, GREP_LINE_CHARS - 1).join('') + '…' : chars.join('');
     const mark = isMatch ? ':' : '-';
-    const adjacent = last !== null && last.file === l.file && last.lineNo + 1 === l.lineNo;
     const block = [...(last !== null && !adjacent ? ['--'] : []), `${l.file}${mark}${l.lineNo}${mark} ${text}`];
     const size = block.reduce((n, x) => n + Buffer.byteLength(x, 'utf8') + 1, 0);
     if (bytes + size > GREP_MAX_BYTES) break;
     bytes += size;
     out.push(...block);
     last = l;
-    if (isMatch) {
-      matches++;
-      lastMatch = l;
-    }
-    if (isMatch || inTail) keep = out.length;
+    if (isMatch) matches++;
+    inMatchBlock = isMatch || inTail;
+    if (inMatchBlock) keep = out.length;
   }
   return out.slice(0, keep);
 }
@@ -416,8 +528,7 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
   }
   if (!/^[0-9a-f]{40}$/.test(mergeBase)) throw new ToolError('NO_MERGE_BASE', 'Could not compute the merge-base.');
 
-  // Step 5: diff from the merge-base, with WIDE_DIFF_CONTEXT lines around each change. A diff over the size limit
-  // falls back to PLAIN_DIFF_CONTEXT lines.
+  // Step 5: diff from the merge-base, with the widest context in DIFF_CONTEXT_TIERS that fits the size limit.
   const diffWith = async (context: number): Promise<string> => {
     const diffArgs = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', `-U${context}`, '-M', mergeBase];
     if (!input.includeUncommitted) diffArgs.push(headSha);
@@ -429,13 +540,16 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
       throw new ToolError('GIT_ERROR', 'git diff failed.');
     }
   };
-  let diff: string;
-  try {
-    diff = await diffWith(WIDE_DIFF_CONTEXT);
-    if (utf8Bytes(diff) > LIMITS.diffBytes) diff = await diffWith(PLAIN_DIFF_CONTEXT);
-  } catch (e) {
-    if (!(e instanceof ToolError) || e.code !== 'LIMIT_EXCEEDED') throw e;
-    diff = await diffWith(PLAIN_DIFF_CONTEXT);
+  let diff = '';
+  for (const [i, context] of DIFF_CONTEXT_TIERS.entries()) {
+    // The narrowest diff is used whatever its size; the payload limit check reports one that is still too large.
+    const narrowest = i === DIFF_CONTEXT_TIERS.length - 1;
+    try {
+      diff = await diffWith(context);
+      if (narrowest || utf8Bytes(diff) <= LIMITS.diffBytes) break;
+    } catch (e) {
+      if (narrowest || !(e instanceof ToolError) || e.code !== 'LIMIT_EXCEEDED') throw e;
+    }
   }
   if (diff.trim() === '') throw new ToolError('EMPTY_DIFF', 'There are no changes between the merge-base and HEAD.');
 

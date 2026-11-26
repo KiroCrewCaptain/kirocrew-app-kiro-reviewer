@@ -6,7 +6,7 @@ import { symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { collectRepo, grepRepo, validateRef } from '../src/collect/git.js';
+import { collectRepo, grepRepo, GREP_FUNCTION_LINES, validateRef } from '../src/collect/git.js';
 import { ToolError } from '../src/errors.js';
 import { LIMITS } from '../src/limits.js';
 import { git, makeRepo, rm, tempDir, write } from './helpers.js';
@@ -129,7 +129,7 @@ describe('collectRepo', () => {
     expect(c.diff).not.toContain('\n export const v151 = 151;');
   });
 
-  it('falls back to 3 lines of context when the 50-line diff is over the diff size limit', async () => {
+  it('falls back to 6 lines of context when the 50-line diff is over the diff size limit', async () => {
     const r = repo();
     const lines = Array.from({ length: 60_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
     write(r, 'src/big.ts', lines.join('\n') + '\n');
@@ -139,13 +139,31 @@ describe('collectRepo', () => {
     for (let i = 50; i < lines.length; i += 100) lines[i] = `export const v${i + 1} = "changed";`;
     write(r, 'src/big.ts', lines.join('\n') + '\n');
     git(r, 'commit', '-q', '-am', 'change every 100th line');
-    const wide = execFileSync('git', ['-C', r, 'diff', '-U50', 'base2', 'HEAD'], {
-      maxBuffer: 64 * 1024 * 1024,
-    }).length;
-    expect(wide).toBeGreaterThan(LIMITS.diffBytes);
+    const size = (context: number) =>
+      execFileSync('git', ['-C', r, 'diff', `-U${context}`, 'base2', 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).length;
+    expect(size(50)).toBeGreaterThan(LIMITS.diffBytes);
+    expect(size(6)).toBeLessThan(LIMITS.diffBytes);
+    expect(size(3)).toBeLessThan(size(6));
     const c = await collectRepo({ repoPath: r, base: 'base2', includeUncommitted: false, contextFiles: [] });
-    expect(Buffer.byteLength(c.diff)).toBeLessThan(LIMITS.diffBytes);
-    expect(c.diff.match(/^@@ /gm)!.length).toBeGreaterThan(100);
+    expect(Buffer.byteLength(c.diff)).toBe(size(6));
+  });
+
+  it('falls back to 3 lines of context when the 6-line diff is also over the diff size limit', async () => {
+    const r = repo();
+    const lines = Array.from({ length: 60_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add big');
+    git(r, 'branch', 'base3');
+    for (let i = 10; i < lines.length; i += 20) lines[i] = `export const v${i + 1} = "changed";`;
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'commit', '-q', '-am', 'change every 20th line');
+    const size = (context: number) =>
+      execFileSync('git', ['-C', r, 'diff', `-U${context}`, 'base3', 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).length;
+    expect(size(6)).toBeGreaterThan(LIMITS.diffBytes);
+    expect(size(3)).toBeLessThan(LIMITS.diffBytes);
+    const c = await collectRepo({ repoPath: r, base: 'base3', includeUncommitted: false, contextFiles: [] });
+    expect(Buffer.byteLength(c.diff)).toBe(size(3));
   });
 
   it('includeUncommitted diffs the working tree; otherwise only commits', async () => {
@@ -239,27 +257,39 @@ describe('grepRepo', () => {
     '\n';
   const head = (r: string) => git(r, 'rev-parse', 'HEAD').trim();
 
-  it('returns 3 lines either side of each match, marks matches with ":" and context with "-", and splits blocks with "--"', async () => {
+  it('returns 6 lines either side of each match, marks matches with ":" and context with "-", and splits blocks with "--"', async () => {
     const r = repo();
-    write(r, 'src/a.ts', lines(20, [5, 16]));
+    write(r, 'src/a.txt', lines(30, [8, 23]));
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add a');
     expect(await grepRepo(r, head(r), 'needle', false)).toEqual([
-      'src/a.ts-2- line 2',
-      'src/a.ts-3- line 3',
-      'src/a.ts-4- line 4',
-      'src/a.ts:5: call needle() 5',
-      'src/a.ts-6- line 6',
-      'src/a.ts-7- line 7',
-      'src/a.ts-8- line 8',
+      'src/a.txt-2- line 2',
+      'src/a.txt-3- line 3',
+      'src/a.txt-4- line 4',
+      'src/a.txt-5- line 5',
+      'src/a.txt-6- line 6',
+      'src/a.txt-7- line 7',
+      'src/a.txt:8: call needle() 8',
+      'src/a.txt-9- line 9',
+      'src/a.txt-10- line 10',
+      'src/a.txt-11- line 11',
+      'src/a.txt-12- line 12',
+      'src/a.txt-13- line 13',
+      'src/a.txt-14- line 14',
       '--',
-      'src/a.ts-13- line 13',
-      'src/a.ts-14- line 14',
-      'src/a.ts-15- line 15',
-      'src/a.ts:16: call needle() 16',
-      'src/a.ts-17- line 17',
-      'src/a.ts-18- line 18',
-      'src/a.ts-19- line 19',
+      'src/a.txt-17- line 17',
+      'src/a.txt-18- line 18',
+      'src/a.txt-19- line 19',
+      'src/a.txt-20- line 20',
+      'src/a.txt-21- line 21',
+      'src/a.txt-22- line 22',
+      'src/a.txt:23: call needle() 23',
+      'src/a.txt-24- line 24',
+      'src/a.txt-25- line 25',
+      'src/a.txt-26- line 26',
+      'src/a.txt-27- line 27',
+      'src/a.txt-28- line 28',
+      'src/a.txt-29- line 29',
     ]);
   });
 
@@ -282,17 +312,20 @@ describe('grepRepo', () => {
 
   it('ends at the 20th match and its trailing context, without leading context of a 21st', async () => {
     const r = repo();
-    const hits = Array.from({ length: 21 }, (_, i) => 4 + i * 10);
-    write(r, 'src/spread.ts', lines(220, hits));
+    const hits = Array.from({ length: 21 }, (_, i) => 4 + i * 20);
+    write(r, 'src/spread.txt', lines(440, hits));
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add spread');
     const out = await grepRepo(r, head(r), 'needle', false);
-    expect(out.filter((l) => l.startsWith('src/spread.ts:'))).toHaveLength(20);
-    expect(out.slice(-4)).toEqual([
-      'src/spread.ts:194: call needle() 194',
-      'src/spread.ts-195- line 195',
-      'src/spread.ts-196- line 196',
-      'src/spread.ts-197- line 197',
+    expect(out.filter((l) => l.startsWith('src/spread.txt:'))).toHaveLength(20);
+    expect(out.slice(-7)).toEqual([
+      'src/spread.txt:384: call needle() 384',
+      'src/spread.txt-385- line 385',
+      'src/spread.txt-386- line 386',
+      'src/spread.txt-387- line 387',
+      'src/spread.txt-388- line 388',
+      'src/spread.txt-389- line 389',
+      'src/spread.txt-390- line 390',
     ]);
   });
 
@@ -311,5 +344,165 @@ describe('grepRepo', () => {
     const out = await grepRepo(r, head(r), 'needle', false);
     expect(out.filter((l) => l.startsWith('src/many.ts:'))).toHaveLength(20);
     expect(out.at(-1)).toBe('src/many.ts:20: call needle() 20');
+  });
+
+  it('widens context to the enclosing TypeScript function or method, ignoring control-flow lines', async () => {
+    const r = repo();
+    // The blank line keeps -W from pulling the comments above alpha into its context.
+    const pad = [...Array.from({ length: 9 }, (_, i) => `// pad ${i + 1}`), ''];
+    write(
+      r,
+      'src/w.ts',
+      [
+        ...pad,
+        'export function alpha(a: number): number {',
+        '  const b = needle(a);',
+        '  if (b > 1) {',
+        ...Array.from({ length: 7 }, (_, i) => `    a += ${i + 1};`),
+        '  }',
+        '  for (const i of [1]) {',
+        '    a += i;',
+        '  }',
+        '  return a;',
+        '}',
+        '',
+        'export class Foo {',
+        '  private bar(): void {}',
+        '}',
+      ].join('\n') + '\n',
+    );
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add w');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    // -C 6 covers lines 6-18 and -W covers alpha (11-26); nothing of Foo.
+    expect(out[0]).toBe('src/w.ts-6- // pad 6');
+    expect(out).toContain('src/w.ts:12:   const b = needle(a);');
+    expect(out.at(-1)).toBe('src/w.ts-26- }');
+    expect(out).toHaveLength(21);
+  });
+
+  it('widens context to the enclosing Python function', async () => {
+    const r = repo();
+    const body = Array.from({ length: 10 }, (_, i) => `    x${i} = ${i}`);
+    write(
+      r,
+      'src/m.py',
+      ['import os', '', 'def one():', ...body, '    return needle(x0)', '', 'def two():', '    pass'].join('\n') + '\n',
+    );
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add m');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    // The match is line 14; -C 6 alone would start at line 8.
+    expect(out[0]).toBe('src/m.py-3- def one():');
+  });
+
+  it('keeps plain line context for files with no function driver', async () => {
+    const r = repo();
+    const rows = Array.from({ length: 30 }, (_, i) => `  "k${i + 1}": ${i === 14 ? '"needle"' : i},`);
+    write(r, 'src/p.json', ['{', ...rows, '}'].join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add p');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    expect(out).toHaveLength(13);
+    expect(out[6]).toBe('src/p.json:16:   "k15": "needle",');
+  });
+
+  it('does not treat a call statement inside a function as a function start', async () => {
+    const r = repo();
+    const body = (n: number) => Array.from({ length: n }, (_, i) => `  const v${i} = ${i};`);
+    write(
+      r,
+      'src/calls.ts',
+      [
+        '',
+        'export function withCalls(a: number): number {',
+        ...body(8),
+        '  doThing(a);',
+        '  setup(a, {',
+        '    x: 1,',
+        '  });',
+        '  const total = (a + 1) * 2;',
+        ...body(8),
+        '  return needle(a);',
+        '}',
+      ].join('\n') + '\n',
+    );
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add calls');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    // The match is line 24; -C 6 alone would start at line 18.
+    expect(out[0]).toBe('src/calls.ts-2- export function withCalls(a: number): number {');
+    expect(out.at(-1)).toBe('src/calls.ts-25- }');
+  });
+
+  it('treats an arrow-function binding as a function start', async () => {
+    const r = repo();
+    const body = Array.from({ length: 10 }, (_, i) => `  const v${i} = ${i};`);
+    write(
+      r,
+      'src/arrow.ts',
+      ['', 'export const handler = async (cb: () => void): Promise<void> => {', ...body, '  needle(cb);', '};'].join(
+        '\n',
+      ) + '\n',
+    );
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add arrow');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    // The match is line 13; -C 6 alone would start at line 7.
+    expect(out[0]).toBe('src/arrow.ts-2- export const handler = async (cb: () => void): Promise<void> => {');
+  });
+
+  it('treats a describe/it/test block as the enclosing function', async () => {
+    const r = repo();
+    const body = Array.from({ length: 10 }, (_, i) => `    const v${i} = ${i};`);
+    write(
+      r,
+      'test/x.test.ts',
+      [
+        "describe('group', () => {",
+        "  it('first', () => {",
+        '    expect(1).toBe(1);',
+        '  });',
+        '',
+        "  it('second', async () => {",
+        ...body,
+        '    expect(needle()).toBe(1);',
+        '  });',
+        '});',
+      ].join('\n') + '\n',
+    );
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add x');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    // The match is line 17; -C 6 alone would start at line 11.
+    expect(out[0]).toBe("test/x.test.ts-6-   it('second', async () => {");
+  });
+
+  it('returns a match deep in a long function, with at most GREP_FUNCTION_LINES lines before it', async () => {
+    const r = repo();
+    const body = Array.from({ length: 1200 }, (_, i) => `  const v${i} = compute(${i}) + another(${i}) * 1000;`);
+    write(r, 'src/long.ts', ['export function big(): void {', ...body, '  needle();', '}'].join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add long');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    expect(GREP_FUNCTION_LINES).toBe(40);
+    expect(out).toHaveLength(42);
+    expect(out[0]).toBe('src/long.ts-1162-   const v1160 = compute(1160) + another(1160) * 1000;');
+    expect(out.at(-2)).toBe('src/long.ts:1202:   needle();');
+    expect(out.at(-1)).toBe('src/long.ts-1203- }');
+  });
+
+  it('ends GREP_FUNCTION_LINES lines after the 20th match when a 21st follows in the same function', async () => {
+    const r = repo();
+    // Matches every 60 lines, from line 10: the 20th is line 1150 and the 21st is line 1210.
+    const body = Array.from({ length: 1300 }, (_, i) =>
+      (i + 2 - 10) % 60 === 0 && i + 2 <= 1210 ? '  needle();' : '  x;',
+    );
+    write(r, 'a.ts', ['export function big(): void {', ...body, '}'].join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add a');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    expect(out.filter((l) => l.startsWith('a.ts:'))).toHaveLength(20);
+    expect(out.at(-1)).toBe('a.ts-1190-   x;');
   });
 });
