@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { execFile } from 'node:child_process';
-import { realpathSync, statSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, realpathSync, statSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ToolError } from '../errors.js';
@@ -224,6 +224,8 @@ export const decodeRepoText = (buf: Buffer): string | null => decodeText(buf);
 
 export const GREP_MAX_MATCHES = 20;
 export const GREP_CONTEXT_LINES = 6;
+/** Most lines of enclosing-function context kept either side of a match. */
+export const GREP_FUNCTION_LINES = 40;
 export const GREP_LINE_CHARS = 200;
 export const GREP_MAX_BYTES = 32 * 1024;
 
@@ -249,8 +251,9 @@ const GREP_FUNC_DRIVERS: Record<string, string[]> = {
 };
 
 /**
- * Function starts for JavaScript and TypeScript: functions, classes, arrow-function bindings, type declarations and
- * methods. The `!` line excludes control-flow statements that look like method calls.
+ * Function starts for JavaScript and TypeScript: functions, classes, arrow-function bindings, type declarations,
+ * methods and test blocks. A method with no modifier must end in `) {` or `): Type {`, so a call statement such as
+ * `run(x);` or `run(x, {` is not a function start. The `!` line excludes control-flow statements.
  */
 const KCRJS_FUNCNAME = [
   '!^[ \t]*(if|else|for|while|do|switch|case|catch|try|return|throw|with|new|await|yield|typeof|delete)([ \t(]|$)',
@@ -260,7 +263,9 @@ const KCRJS_FUNCNAME = [
       '(export[ \t]+)?(default[ \t]+)?(abstract[ \t]+)?class[ \t].*',
       '(export[ \t]+)?(const|let|var)[ \t]+[A-Za-z_$][A-Za-z0-9_$]*[ \t]*(:[^=]*)?=[ \t]*(async[ \t]+)?(\\(|[A-Za-z_$][A-Za-z0-9_$]*[ \t]*=>|function).*',
       '(export[ \t]+)?(declare[ \t]+)?(interface|enum|namespace|module)[ \t].*',
-      '((public|private|protected|static|async|readonly|override|abstract|get|set)[ \t]+)*[A-Za-z_$#][A-Za-z0-9_$]*[ \t]*(<.*>)?\\(.*',
+      '((public|private|protected|static|async|override|abstract|get|set)[ \t]+)+[A-Za-z_$#*][A-Za-z0-9_$]*[ \t]*(<.*>)?\\(.*',
+      '[A-Za-z_$#][A-Za-z0-9_$]*[ \t]*(<.*>)?\\(.*\\)[ \t]*(:.*)?\\{[ \t]*',
+      '(describe|it|test)(\\.[A-Za-z]+)*[ \t]*\\(.*',
     ].join('|') +
     ')$',
 ].join('\n');
@@ -269,10 +274,11 @@ let grepAttributesPath: string | undefined;
 
 /**
  * An attributes file mapping extensions to GREP_FUNC_DRIVERS. Every other file gets `kcrline`, whose every line is a
- * function start, so -W adds nothing to -C there. Written once per process to a private temp dir.
+ * function start, so -W adds nothing to -C there. Written to a private temp dir and rewritten if the OS temp
+ * cleaner removed it: git ignores a missing attributes file without an error.
  */
 function grepAttributesFile(): string {
-  if (grepAttributesPath) return grepAttributesPath;
+  if (grepAttributesPath && existsSync(grepAttributesPath)) return grepAttributesPath;
   const lines = ['* diff=kcrline'];
   for (const [driver, exts] of Object.entries(GREP_FUNC_DRIVERS))
     for (const ext of exts) lines.push(`*.${ext} diff=${driver}`);
@@ -314,6 +320,28 @@ function gitGrep(cwd: string, args: string[]): Promise<Buffer> {
   });
 }
 
+/**
+ * Drops lines more than GREP_FUNCTION_LINES from every match in their file, so the lead-in to a match deep in a long
+ * function cannot use up the byte budget before the match itself. Both lists are in git's order: by file, then line.
+ */
+function nearMatches(lines: GrepLine[], matched: GrepLine[]): GrepLine[] {
+  const byFile = new Map<string, number[]>();
+  for (const m of matched) {
+    const nums = byFile.get(m.file);
+    if (nums) nums.push(m.lineNo);
+    else byFile.set(m.file, [m.lineNo]);
+  }
+  const next = new Map<string, number>();
+  return lines.filter((l) => {
+    const nums = byFile.get(l.file);
+    if (!nums) return false;
+    let i = next.get(l.file) ?? 0;
+    while (i < nums.length && nums[i] < l.lineNo - GREP_FUNCTION_LINES) i++;
+    next.set(l.file, i);
+    return i < nums.length && nums[i] <= l.lineNo + GREP_FUNCTION_LINES;
+  });
+}
+
 interface GrepLine {
   file: string;
   lineNo: number;
@@ -338,10 +366,11 @@ function parseGrep(out: string, headSha: string, includeUncommitted: boolean): G
 }
 
 /**
- * Fixed-string search over text files (at HEAD, or the working tree with includeUncommitted), with
- * the enclosing function (-W) and GREP_CONTEXT_LINES lines either side of each match. Lines in denylisted or malformed paths are dropped.
- * Returns `path:line: text` for a match and `path-line- text` for context, with `--` between
- * non-adjacent blocks. At most 20 matches, 200 chars per line and 32 KB in total.
+ * Fixed-string search over text files (at HEAD, or the working tree with includeUncommitted). Each match comes with
+ * GREP_CONTEXT_LINES lines either side and its enclosing function (-W), the function kept up to GREP_FUNCTION_LINES
+ * lines either side. Lines in denylisted or malformed paths are dropped. Returns `path:line: text` for a match and
+ * `path-line- text` for context, with `--` between non-adjacent blocks. At most 20 matches, 200 chars per line and
+ * 32 KB in total.
  */
 export async function grepRepo(
   top: string,
@@ -365,7 +394,10 @@ export async function grepRepo(
   ];
   if (!includeUncommitted) args.push(headSha);
   args.push('--');
-  const lines = parseGrep((await gitGrep(top, args)).toString('utf8'), headSha, includeUncommitted);
+  const all = parseGrep((await gitGrep(top, args)).toString('utf8'), headSha, includeUncommitted);
+  // With -z, git prints match and context lines alike; for a fixed-string search a match is a line holding the query.
+  const isMatchLine = (l: GrepLine) => l.text.includes(query);
+  const lines = nearMatches(all, all.filter(isMatchLine));
   const out: string[] = [];
   let bytes = 0;
   let matches = 0;
@@ -375,8 +407,7 @@ export async function grepRepo(
   // Output length through the last match and its trailing context; lines past it lead into a match a cap cut off.
   let keep = 0;
   for (const l of lines) {
-    // With -z, git prints match and context lines alike; for a fixed-string search a match is a line holding the query.
-    const isMatch = l.text.includes(query);
+    const isMatch = isMatchLine(l);
     const adjacent = last !== null && last.file === l.file && last.lineNo + 1 === l.lineNo;
     const inTail: boolean = !isMatch && adjacent && inMatchBlock;
     if (matches >= GREP_MAX_MATCHES && (isMatch || !inTail)) break;

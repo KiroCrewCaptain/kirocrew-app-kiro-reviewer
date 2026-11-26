@@ -6,7 +6,7 @@ import { symlinkSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { collectRepo, grepRepo, validateRef } from '../src/collect/git.js';
+import { collectRepo, grepRepo, GREP_FUNCTION_LINES, validateRef } from '../src/collect/git.js';
 import { ToolError } from '../src/errors.js';
 import { LIMITS } from '../src/limits.js';
 import { git, makeRepo, rm, tempDir, write } from './helpers.js';
@@ -387,5 +387,72 @@ describe('grepRepo', () => {
     const out = await grepRepo(r, head(r), 'needle', false);
     expect(out).toHaveLength(13);
     expect(out[6]).toBe('src/p.json:16:   "k15": "needle",');
+  });
+
+  it('does not treat a call statement inside a function as a function start', async () => {
+    const r = repo();
+    const body = (n: number) => Array.from({ length: n }, (_, i) => `  const v${i} = ${i};`);
+    write(
+      r,
+      'src/calls.ts',
+      [
+        '',
+        'export function withCalls(a: number): number {',
+        ...body(8),
+        '  doThing(a);',
+        '  setup(a, {',
+        '    x: 1,',
+        '  });',
+        ...body(8),
+        '  return needle(a);',
+        '}',
+      ].join('\n') + '\n',
+    );
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add calls');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    // The match is line 23; -C 6 alone would start at line 17.
+    expect(out[0]).toBe('src/calls.ts-2- export function withCalls(a: number): number {');
+    expect(out.at(-1)).toBe('src/calls.ts-24- }');
+  });
+
+  it('treats a describe/it/test block as the enclosing function', async () => {
+    const r = repo();
+    const body = Array.from({ length: 10 }, (_, i) => `    const v${i} = ${i};`);
+    write(
+      r,
+      'test/x.test.ts',
+      [
+        "describe('group', () => {",
+        "  it('first', () => {",
+        '    expect(1).toBe(1);',
+        '  });',
+        '',
+        "  it('second', async () => {",
+        ...body,
+        '    expect(needle()).toBe(1);',
+        '  });',
+        '});',
+      ].join('\n') + '\n',
+    );
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add x');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    // The match is line 17; -C 6 alone would start at line 11.
+    expect(out[0]).toBe("test/x.test.ts-6-   it('second', async () => {");
+  });
+
+  it('returns a match deep in a long function, with at most GREP_FUNCTION_LINES lines before it', async () => {
+    const r = repo();
+    const body = Array.from({ length: 1200 }, (_, i) => `  const v${i} = compute(${i}) + another(${i}) * 1000;`);
+    write(r, 'src/long.ts', ['export function big(): void {', ...body, '  needle();', '}'].join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add long');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    expect(GREP_FUNCTION_LINES).toBe(40);
+    expect(out).toHaveLength(42);
+    expect(out[0]).toBe('src/long.ts-1162-   const v1160 = compute(1160) + another(1160) * 1000;');
+    expect(out.at(-2)).toBe('src/long.ts:1202:   needle();');
+    expect(out.at(-1)).toBe('src/long.ts-1203- }');
   });
 });

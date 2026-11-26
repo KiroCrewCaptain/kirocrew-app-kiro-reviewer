@@ -39957,7 +39957,7 @@ __name(checkRequestPath, "checkRequestPath");
 
 // src/collect/git.ts
 import { execFile } from "node:child_process";
-import { realpathSync as realpathSync2, statSync as statSync2, readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync as realpathSync2, statSync as statSync2, readFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path2 from "node:path";
 var GIT_MAX_BUFFER = 2 * 1024 * 1024;
@@ -40123,6 +40123,7 @@ __name(readRepoFile, "readRepoFile");
 var decodeRepoText = /* @__PURE__ */ __name((buf) => decodeText(buf), "decodeRepoText");
 var GREP_MAX_MATCHES = 20;
 var GREP_CONTEXT_LINES = 6;
+var GREP_FUNCTION_LINES = 40;
 var GREP_LINE_CHARS = 200;
 var GREP_MAX_BYTES = 32 * 1024;
 var GREP_FUNC_DRIVERS = {
@@ -40151,12 +40152,14 @@ var KCRJS_FUNCNAME = [
     "(export[ 	]+)?(default[ 	]+)?(abstract[ 	]+)?class[ 	].*",
     "(export[ 	]+)?(const|let|var)[ 	]+[A-Za-z_$][A-Za-z0-9_$]*[ 	]*(:[^=]*)?=[ 	]*(async[ 	]+)?(\\(|[A-Za-z_$][A-Za-z0-9_$]*[ 	]*=>|function).*",
     "(export[ 	]+)?(declare[ 	]+)?(interface|enum|namespace|module)[ 	].*",
-    "((public|private|protected|static|async|readonly|override|abstract|get|set)[ 	]+)*[A-Za-z_$#][A-Za-z0-9_$]*[ 	]*(<.*>)?\\(.*"
+    "((public|private|protected|static|async|override|abstract|get|set)[ 	]+)+[A-Za-z_$#*][A-Za-z0-9_$]*[ 	]*(<.*>)?\\(.*",
+    "[A-Za-z_$#][A-Za-z0-9_$]*[ 	]*(<.*>)?\\(.*\\)[ 	]*(:.*)?\\{[ 	]*",
+    "(describe|it|test)(\\.[A-Za-z]+)*[ 	]*\\(.*"
   ].join("|") + ")$"
 ].join("\n");
 var grepAttributesPath;
 function grepAttributesFile() {
-  if (grepAttributesPath) return grepAttributesPath;
+  if (grepAttributesPath && existsSync(grepAttributesPath)) return grepAttributesPath;
   const lines = ["* diff=kcrline"];
   for (const [driver, exts] of Object.entries(GREP_FUNC_DRIVERS))
     for (const ext of exts) lines.push(`*.${ext} diff=${driver}`);
@@ -40195,6 +40198,24 @@ function gitGrep(cwd, args) {
   });
 }
 __name(gitGrep, "gitGrep");
+function nearMatches(lines, matched) {
+  const byFile = /* @__PURE__ */ new Map();
+  for (const m of matched) {
+    const nums = byFile.get(m.file);
+    if (nums) nums.push(m.lineNo);
+    else byFile.set(m.file, [m.lineNo]);
+  }
+  const next = /* @__PURE__ */ new Map();
+  return lines.filter((l) => {
+    const nums = byFile.get(l.file);
+    if (!nums) return false;
+    let i = next.get(l.file) ?? 0;
+    while (i < nums.length && nums[i] < l.lineNo - GREP_FUNCTION_LINES) i++;
+    next.set(l.file, i);
+    return i < nums.length && nums[i] <= l.lineNo + GREP_FUNCTION_LINES;
+  });
+}
+__name(nearMatches, "nearMatches");
 function parseGrep(out, headSha, includeUncommitted) {
   const prefix = includeUncommitted ? "" : `${headSha}:`;
   const lines = [];
@@ -40228,7 +40249,9 @@ async function grepRepo(top, headSha, query, includeUncommitted) {
   ];
   if (!includeUncommitted) args.push(headSha);
   args.push("--");
-  const lines = parseGrep((await gitGrep(top, args)).toString("utf8"), headSha, includeUncommitted);
+  const all = parseGrep((await gitGrep(top, args)).toString("utf8"), headSha, includeUncommitted);
+  const isMatchLine = /* @__PURE__ */ __name((l) => l.text.includes(query), "isMatchLine");
+  const lines = nearMatches(all, all.filter(isMatchLine));
   const out = [];
   let bytes = 0;
   let matches = 0;
@@ -40236,7 +40259,7 @@ async function grepRepo(top, headSha, query, includeUncommitted) {
   let inMatchBlock = false;
   let keep = 0;
   for (const l of lines) {
-    const isMatch = l.text.includes(query);
+    const isMatch = isMatchLine(l);
     const adjacent = last !== null && last.file === l.file && last.lineNo + 1 === l.lineNo;
     const inTail = !isMatch && adjacent && inMatchBlock;
     if (matches >= GREP_MAX_MATCHES && (isMatch || !inTail)) break;
@@ -40724,7 +40747,7 @@ function buildContextSummaryMarkdown(s) {
 __name(buildContextSummaryMarkdown, "buildContextSummaryMarkdown");
 
 // src/config.ts
-import { chmodSync, existsSync, mkdirSync, readFileSync as readFileSync3, renameSync, rmSync, statSync as statSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { chmodSync, existsSync as existsSync2, mkdirSync, readFileSync as readFileSync3, renameSync, rmSync, statSync as statSync3, writeFileSync as writeFileSync2 } from "node:fs";
 import os2 from "node:os";
 import path4 from "node:path";
 
@@ -40905,7 +40928,7 @@ function expandHome(p) {
 __name(expandHome, "expandHome");
 function readFileConfig(dataDir) {
   const file2 = path4.join(dataDir, "config.json");
-  if (!existsSync(file2)) return {};
+  if (!existsSync2(file2)) return {};
   try {
     const parsed = JSON.parse(readFileSync3(file2, "utf8"));
     return parsed !== null && typeof parsed === "object" ? parsed : {};
@@ -40938,7 +40961,7 @@ function readApiKey(env, dataDir) {
   const fromEnv = str(env.KIRO_API_KEY);
   if (fromEnv) return fromEnv;
   const file2 = path4.join(dataDir, API_KEY_FILE);
-  if (!existsSync(file2)) return void 0;
+  if (!existsSync2(file2)) return void 0;
   if (process.platform !== "win32" && (statSync3(file2).mode & 63) !== 0) {
     throw new ToolError(
       "CONFIG_INVALID_API_KEY",
