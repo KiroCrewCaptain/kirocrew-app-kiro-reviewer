@@ -39957,14 +39957,13 @@ __name(checkRequestPath, "checkRequestPath");
 
 // src/collect/git.ts
 import { execFile } from "node:child_process";
-import { existsSync, realpathSync as realpathSync2, statSync as statSync2, readFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, realpathSync as realpathSync2, rmSync, statSync as statSync2, readFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path2 from "node:path";
 var GIT_MAX_BUFFER = 2 * 1024 * 1024;
 var GIT_TIMEOUT_MS = 3e4;
 var REF_RE = /^[A-Za-z0-9._/@^~-]{1,200}$/;
-var WIDE_DIFF_CONTEXT = 50;
-var PLAIN_DIFF_CONTEXT = 6;
+var DIFF_CONTEXT_TIERS = [50, 6, 3];
 function validateRef(ref) {
   if (!REF_RE.test(ref) || ref.startsWith("-")) {
     throw new ToolError("INVALID_REF", "The base ref has an unsupported format.");
@@ -40163,7 +40162,9 @@ function grepAttributesFile() {
   const lines = ["* diff=kcrline"];
   for (const [driver, exts] of Object.entries(GREP_FUNC_DRIVERS))
     for (const ext of exts) lines.push(`*.${ext} diff=${driver}`);
-  const file2 = path2.join(mkdtempSync(path2.join(tmpdir(), "kcr-grep-")), "gitattributes");
+  const dir = mkdtempSync(path2.join(tmpdir(), "kcr-grep-"));
+  process.once("exit", () => rmSync(dir, { recursive: true, force: true }));
+  const file2 = path2.join(dir, "gitattributes");
   writeFileSync(file2, lines.join("\n") + "\n", { flag: "wx" });
   return grepAttributesPath = file2;
 }
@@ -40360,13 +40361,15 @@ async function collectRepo(input2) {
       throw new ToolError("GIT_ERROR", "git diff failed.");
     }
   }, "diffWith");
-  let diff;
-  try {
-    diff = await diffWith(WIDE_DIFF_CONTEXT);
-    if (utf8Bytes(diff) > LIMITS.diffBytes) diff = await diffWith(PLAIN_DIFF_CONTEXT);
-  } catch (e) {
-    if (!(e instanceof ToolError) || e.code !== "LIMIT_EXCEEDED") throw e;
-    diff = await diffWith(PLAIN_DIFF_CONTEXT);
+  let diff = "";
+  for (const [i, context2] of DIFF_CONTEXT_TIERS.entries()) {
+    const narrowest = i === DIFF_CONTEXT_TIERS.length - 1;
+    try {
+      diff = await diffWith(context2);
+      if (narrowest || utf8Bytes(diff) <= LIMITS.diffBytes) break;
+    } catch (e) {
+      if (narrowest || !(e instanceof ToolError) || e.code !== "LIMIT_EXCEEDED") throw e;
+    }
   }
   if (diff.trim() === "") throw new ToolError("EMPTY_DIFF", "There are no changes between the merge-base and HEAD.");
   const reviewMd = await showRuleFile(top, mergeBase, "REVIEW.md");
@@ -40747,7 +40750,7 @@ function buildContextSummaryMarkdown(s) {
 __name(buildContextSummaryMarkdown, "buildContextSummaryMarkdown");
 
 // src/config.ts
-import { chmodSync, existsSync as existsSync2, mkdirSync, readFileSync as readFileSync3, renameSync, rmSync, statSync as statSync3, writeFileSync as writeFileSync2 } from "node:fs";
+import { chmodSync, existsSync as existsSync2, mkdirSync, readFileSync as readFileSync3, renameSync, rmSync as rmSync2, statSync as statSync3, writeFileSync as writeFileSync2 } from "node:fs";
 import os2 from "node:os";
 import path4 from "node:path";
 
@@ -40997,7 +41000,7 @@ __name(loadTransport, "loadTransport");
 
 // src/staging.ts
 import { randomBytes as randomBytes2 } from "node:crypto";
-import { chmodSync as chmodSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync4, readdirSync, rmSync as rmSync2, statSync as statSync4, writeFileSync as writeFileSync3 } from "node:fs";
+import { chmodSync as chmodSync2, mkdirSync as mkdirSync2, readFileSync as readFileSync4, readdirSync, rmSync as rmSync3, statSync as statSync4, writeFileSync as writeFileSync3 } from "node:fs";
 import path5 from "node:path";
 var STAGING_TTL_MS = 30 * 60 * 1e3;
 var PREPARED_ID_RE = /^prep-[0-9a-f]{16}$/;
@@ -41035,7 +41038,7 @@ function cleanupExpired(dataDir, nowMs) {
       } catch {
       }
       if (nowMs - created > STAGING_TTL_MS) {
-        rmSync2(file2, { force: true });
+        rmSync3(file2, { force: true });
         removed++;
       }
     } catch {
@@ -41063,7 +41066,7 @@ function loadStaged(dataDir, preparedId, nowMs) {
     const staged = JSON.parse(readFileSync4(file2, "utf8"));
     const created = Date.parse(staged.createdAt);
     if (!Number.isFinite(created) || nowMs - created > STAGING_TTL_MS) {
-      rmSync2(file2, { force: true });
+      rmSync3(file2, { force: true });
       return null;
     }
     return staged;
@@ -41073,7 +41076,7 @@ function loadStaged(dataDir, preparedId, nowMs) {
 }
 __name(loadStaged, "loadStaged");
 function deleteStaged(dataDir, preparedId) {
-  rmSync2(fileFor(dataDir, preparedId), { force: true });
+  rmSync3(fileFor(dataDir, preparedId), { force: true });
 }
 __name(deleteStaged, "deleteStaged");
 
@@ -41208,7 +41211,7 @@ async function contextPrepareTool(input2, deps) {
 __name(contextPrepareTool, "contextPrepareTool");
 
 // src/payloadStore.ts
-import { chmodSync as chmodSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync5, renameSync as renameSync2, rmSync as rmSync3, writeFileSync as writeFileSync4 } from "node:fs";
+import { chmodSync as chmodSync3, mkdirSync as mkdirSync3, readdirSync as readdirSync2, readFileSync as readFileSync5, renameSync as renameSync2, rmSync as rmSync4, writeFileSync as writeFileSync4 } from "node:fs";
 import path7 from "node:path";
 function reviewDir(dataDir, reviewId) {
   if (!REVIEW_ID_RE.test(reviewId)) throw new Error("invalid reviewId");
@@ -41256,7 +41259,7 @@ function saveContextRound(dataDir, reviewId, iteration, payload2, sentAt) {
 }
 __name(saveContextRound, "saveContextRound");
 function deleteStored(dataDir, reviewId) {
-  rmSync3(reviewDir(dataDir, reviewId), { recursive: true, force: true });
+  rmSync4(reviewDir(dataDir, reviewId), { recursive: true, force: true });
 }
 __name(deleteStored, "deleteStored");
 

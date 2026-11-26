@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { execFile } from 'node:child_process';
-import { existsSync, realpathSync, statSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, realpathSync, rmSync, statSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ToolError } from '../errors.js';
@@ -19,9 +19,8 @@ export const GIT_MAX_BUFFER = 2 * 1024 * 1024;
 export const GIT_TIMEOUT_MS = 30_000;
 export const REF_RE = /^[A-Za-z0-9._/@^~-]{1,200}$/;
 
-/** Lines of context around each change, and the fallback when that diff is over the size limit. */
-const WIDE_DIFF_CONTEXT = 50;
-const PLAIN_DIFF_CONTEXT = 6;
+/** Lines of context around each change, widest first. The first diff within the size limit is used. */
+const DIFF_CONTEXT_TIERS = [50, 6, 3];
 
 export function validateRef(ref: string): void {
   if (!REF_RE.test(ref) || ref.startsWith('-')) {
@@ -274,15 +273,17 @@ let grepAttributesPath: string | undefined;
 
 /**
  * An attributes file mapping extensions to GREP_FUNC_DRIVERS. Every other file gets `kcrline`, whose every line is a
- * function start, so -W adds nothing to -C there. Written to a private temp dir and rewritten if the OS temp
- * cleaner removed it: git ignores a missing attributes file without an error.
+ * function start, so -W adds nothing to -C there. Written to a private temp dir that is removed on exit, and
+ * rewritten if the OS temp cleaner removed it: git ignores a missing attributes file without an error.
  */
 function grepAttributesFile(): string {
   if (grepAttributesPath && existsSync(grepAttributesPath)) return grepAttributesPath;
   const lines = ['* diff=kcrline'];
   for (const [driver, exts] of Object.entries(GREP_FUNC_DRIVERS))
     for (const ext of exts) lines.push(`*.${ext} diff=${driver}`);
-  const file = path.join(mkdtempSync(path.join(tmpdir(), 'kcr-grep-')), 'gitattributes');
+  const dir = mkdtempSync(path.join(tmpdir(), 'kcr-grep-'));
+  process.once('exit', () => rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'gitattributes');
   writeFileSync(file, lines.join('\n') + '\n', { flag: 'wx' });
   return (grepAttributesPath = file);
 }
@@ -525,8 +526,7 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
   }
   if (!/^[0-9a-f]{40}$/.test(mergeBase)) throw new ToolError('NO_MERGE_BASE', 'Could not compute the merge-base.');
 
-  // Step 5: diff from the merge-base, with WIDE_DIFF_CONTEXT lines around each change. A diff over the size limit
-  // falls back to PLAIN_DIFF_CONTEXT lines.
+  // Step 5: diff from the merge-base, with the widest context in DIFF_CONTEXT_TIERS that fits the size limit.
   const diffWith = async (context: number): Promise<string> => {
     const diffArgs = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', `-U${context}`, '-M', mergeBase];
     if (!input.includeUncommitted) diffArgs.push(headSha);
@@ -538,13 +538,16 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
       throw new ToolError('GIT_ERROR', 'git diff failed.');
     }
   };
-  let diff: string;
-  try {
-    diff = await diffWith(WIDE_DIFF_CONTEXT);
-    if (utf8Bytes(diff) > LIMITS.diffBytes) diff = await diffWith(PLAIN_DIFF_CONTEXT);
-  } catch (e) {
-    if (!(e instanceof ToolError) || e.code !== 'LIMIT_EXCEEDED') throw e;
-    diff = await diffWith(PLAIN_DIFF_CONTEXT);
+  let diff = '';
+  for (const [i, context] of DIFF_CONTEXT_TIERS.entries()) {
+    // The narrowest diff is used whatever its size; the payload limit check reports one that is still too large.
+    const narrowest = i === DIFF_CONTEXT_TIERS.length - 1;
+    try {
+      diff = await diffWith(context);
+      if (narrowest || utf8Bytes(diff) <= LIMITS.diffBytes) break;
+    } catch (e) {
+      if (narrowest || !(e instanceof ToolError) || e.code !== 'LIMIT_EXCEEDED') throw e;
+    }
   }
   if (diff.trim() === '') throw new ToolError('EMPTY_DIFF', 'There are no changes between the merge-base and HEAD.');
 

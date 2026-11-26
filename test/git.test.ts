@@ -148,6 +148,24 @@ describe('collectRepo', () => {
     expect(c.diff.match(/^@@ /gm)!.length).toBeGreaterThan(100);
   });
 
+  it('falls back to 3 lines of context when the 6-line diff is also over the diff size limit', async () => {
+    const r = repo();
+    const lines = Array.from({ length: 60_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add big');
+    git(r, 'branch', 'base3');
+    for (let i = 10; i < lines.length; i += 20) lines[i] = `export const v${i + 1} = "changed";`;
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'commit', '-q', '-am', 'change every 20th line');
+    const size = (context: number) =>
+      execFileSync('git', ['-C', r, 'diff', `-U${context}`, 'base3', 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).length;
+    expect(size(6)).toBeGreaterThan(LIMITS.diffBytes);
+    expect(size(3)).toBeLessThan(LIMITS.diffBytes);
+    const c = await collectRepo({ repoPath: r, base: 'base3', includeUncommitted: false, contextFiles: [] });
+    expect(Buffer.byteLength(c.diff)).toBe(size(3));
+  });
+
   it('includeUncommitted diffs the working tree; otherwise only commits', async () => {
     const r = repo();
     write(r, 'src/users.ts', 'export const a = 1;\nexport const b = "x" + req.query.id;\nexport const dirty = true;\n');
