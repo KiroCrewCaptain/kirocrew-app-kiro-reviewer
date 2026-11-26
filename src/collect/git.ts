@@ -397,7 +397,8 @@ export async function grepRepo(
   const all = parseGrep((await gitGrep(top, args)).toString('utf8'), headSha, includeUncommitted);
   // With -z, git prints match and context lines alike; for a fixed-string search a match is a line holding the query.
   const isMatchLine = (l: GrepLine) => l.text.includes(query);
-  const lines = nearMatches(all, all.filter(isMatchLine));
+  // Only the matches that can be returned: lines that lead into a match past the cap are not context.
+  const lines = nearMatches(all, all.filter(isMatchLine).slice(0, GREP_MAX_MATCHES));
   const out: string[] = [];
   let bytes = 0;
   let matches = 0;

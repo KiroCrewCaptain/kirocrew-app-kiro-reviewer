@@ -455,4 +455,18 @@ describe('grepRepo', () => {
     expect(out.at(-2)).toBe('src/long.ts:1202:   needle();');
     expect(out.at(-1)).toBe('src/long.ts-1203- }');
   });
+
+  it('ends GREP_FUNCTION_LINES lines after the 20th match when a 21st follows in the same function', async () => {
+    const r = repo();
+    // Matches every 60 lines, from line 10: the 20th is line 1150 and the 21st is line 1210.
+    const body = Array.from({ length: 1300 }, (_, i) =>
+      (i + 2 - 10) % 60 === 0 && i + 2 <= 1210 ? '  needle();' : '  x;',
+    );
+    write(r, 'a.ts', ['export function big(): void {', ...body, '}'].join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add a');
+    const out = await grepRepo(r, head(r), 'needle', false);
+    expect(out.filter((l) => l.startsWith('a.ts:'))).toHaveLength(20);
+    expect(out.at(-1)).toBe('a.ts-1190-   x;');
+  });
 });

@@ -40251,7 +40251,7 @@ async function grepRepo(top, headSha, query, includeUncommitted) {
   args.push("--");
   const all = parseGrep((await gitGrep(top, args)).toString("utf8"), headSha, includeUncommitted);
   const isMatchLine = /* @__PURE__ */ __name((l) => l.text.includes(query), "isMatchLine");
-  const lines = nearMatches(all, all.filter(isMatchLine));
+  const lines = nearMatches(all, all.filter(isMatchLine).slice(0, GREP_MAX_MATCHES));
   const out = [];
   let bytes = 0;
   let matches = 0;
