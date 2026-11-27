@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { collectRepo, grepRepo, GREP_FUNCTION_LINES, validateRef } from '../src/collect/git.js';
 import { ToolError } from '../src/errors.js';
 import { LIMITS } from '../src/limits.js';
+import { redactDiff } from '../src/redact.js';
 import { git, makeRepo, rm, tempDir, write } from './helpers.js';
 
 const dirs: string[] = [];
@@ -185,6 +186,24 @@ describe('collectRepo', () => {
     expect(chars(wide)).toBeLessThan(LIMITS.diffChars);
     const c = await collectRepo({ repoPath: r, base: 'base4', includeUncommitted: false, contextFiles: [] });
     expect(c.diff).toBe(wide);
+  });
+
+  it('measures the redacted diff when choosing the context tier', async () => {
+    const r = repo();
+    const line = (i: number, v: string) => `export const v${i} = ${v}; // password=abcdefgh`;
+    const lines = Array.from({ length: 4_000 }, (_, i) => line(i + 1, String(i + 1)));
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add big');
+    git(r, 'branch', 'base5');
+    for (let i = 50; i < lines.length; i += 100) lines[i] = line(i + 1, '"changed"');
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'commit', '-q', '-am', 'change every 100th line');
+    // Each redaction marker is longer than the 8-character value it replaces.
+    expect(chars(diffOf(r, 'base5', 50))).toBeLessThan(LIMITS.diffChars);
+    expect(chars(redactDiff(diffOf(r, 'base5', 50)).text)).toBeGreaterThan(LIMITS.diffChars);
+    const c = await collectRepo({ repoPath: r, base: 'base5', includeUncommitted: false, contextFiles: [] });
+    expect(c.diff).toBe(diffOf(r, 'base5', 6));
   });
 
   it('includeUncommitted diffs the working tree; otherwise only commits', async () => {

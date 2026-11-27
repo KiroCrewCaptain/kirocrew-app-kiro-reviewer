@@ -40370,7 +40370,7 @@ async function collectRepo(input2) {
     const narrowest = i === DIFF_CONTEXT_TIERS.length - 1;
     try {
       diff = await diffWith(context2);
-      if (narrowest || diffFits(diff)) break;
+      if (narrowest || diffFits(redactDiff(diff).text)) break;
     } catch (e) {
       if (narrowest || !(e instanceof ToolError) || e.code !== "LIMIT_EXCEEDED") throw e;
     }
