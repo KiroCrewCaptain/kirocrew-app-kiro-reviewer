@@ -22173,7 +22173,7 @@ var LIMITS = {
   contextFiles: 20,
   contextFileBytes: 1e5,
   contextTotalBytes: 2e5,
-  rulesAutosdeYamlBytes: 131072,
+  rulesReviewRulesYamlBytes: 131072,
   rulesReviewMdBytes: 131072,
   pathChars: 512,
   suppressReasonChars: 500,
@@ -22233,7 +22233,7 @@ function checkPayloadLimits(p) {
   }
   checkLimit("context.totalBytes", LIMITS.contextTotalBytes, total);
   if (p.rules?.reviewRulesYaml !== void 0) {
-    checkLimit("rules.autosdeYamlBytes", LIMITS.rulesAutosdeYamlBytes, utf8Bytes(p.rules.reviewRulesYaml));
+    checkLimit("rules.reviewRulesYamlBytes", LIMITS.rulesReviewRulesYamlBytes, utf8Bytes(p.rules.reviewRulesYaml));
   }
   if (p.rules?.reviewMd !== void 0) {
     checkLimit("rules.reviewMdBytes", LIMITS.rulesReviewMdBytes, utf8Bytes(p.rules.reviewMd));
@@ -23069,7 +23069,7 @@ async function collectRepo(input2) {
     }
   }
   if (diff.trim() === "") throw new ToolError("EMPTY_DIFF", "There are no changes between the merge-base and HEAD.");
-  const reviewRulesYaml = await showRuleFile(top, mergeBase, "REVIEW_RULES.yaml", "rules.autosdeYamlBytes");
+  const reviewRulesYaml = await showRuleFile(top, mergeBase, "REVIEW_RULES.yaml", "rules.reviewRulesYamlBytes");
   const reviewMd = await showRuleFile(top, mergeBase, "REVIEW.md", "rules.reviewMdBytes");
   const commits = await collectCommits(top, mergeBase, headSha);
   const context = [];
@@ -23382,7 +23382,7 @@ function buildPayload(i) {
     payload2.rules = {
       source: "base",
       revision: i.mergeBase,
-      // The BFF still names this field autosdeYaml.
+      // autosdeYaml is the wire field name for REVIEW_RULES.yaml.
       ...reviewRulesYaml !== void 0 ? { autosdeYaml: reviewRulesYaml } : {},
       ...reviewMd !== void 0 ? { reviewMd } : {}
     };
@@ -24293,7 +24293,7 @@ __name(countDerivedRefs, "countDerivedRefs");
 // src/tools/prepare.ts
 var prepareInputShape = {
   repoPath: external_exports.string().min(1).describe("Absolute path of the git repository root."),
-  base: external_exports.string().regex(REF_RE).refine((s) => !s.startsWith("-"), { message: "must not start with -" }).describe("Base ref, e.g. origin/mainline."),
+  base: external_exports.string().regex(REF_RE).refine((s) => !s.startsWith("-"), { message: "must not start with -" }).describe("Base ref, e.g. origin/main."),
   level: external_exports.enum(["quick", "standard", "deep"]).optional().describe("Review depth (new reviews only)."),
   iterationBudget: external_exports.number().int().min(1).max(LIMITS.iterationBudgetMax).optional().describe("Max iterations, 1..20, default 20 (new reviews only)."),
   contextFiles: external_exports.array(external_exports.string().min(1)).optional().describe("Up to 20 repo-relative files the user approved."),

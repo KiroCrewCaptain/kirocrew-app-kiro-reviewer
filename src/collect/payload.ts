@@ -279,7 +279,7 @@ export function buildPayload(i: BuildPayloadInput): SubmitRequest {
     payload.rules = {
       source: 'base',
       revision: i.mergeBase,
-      // The BFF still names this field autosdeYaml.
+      // autosdeYaml is the wire field name for REVIEW_RULES.yaml.
       ...(reviewRulesYaml !== undefined ? { autosdeYaml: reviewRulesYaml } : {}),
       ...(reviewMd !== undefined ? { reviewMd } : {}),
     };

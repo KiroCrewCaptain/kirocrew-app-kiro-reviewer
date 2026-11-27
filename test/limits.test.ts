@@ -47,9 +47,9 @@ describe('client limits (same names as the service)', () => {
       LIMITS.contextFileBytes,
     ],
     [
-      'rules.autosdeYamlBytes',
+      'rules.reviewRulesYamlBytes',
       (n) => ({ ...ok, rules: { reviewRulesYaml: '#'.repeat(n) } }),
-      LIMITS.rulesAutosdeYamlBytes,
+      LIMITS.rulesReviewRulesYamlBytes,
     ],
     ['rules.reviewMdBytes', (n) => ({ ...ok, rules: { reviewMd: 'a'.repeat(n) } }), LIMITS.rulesReviewMdBytes],
     ['context.rounds', (n) => ({ ...ok, contextRounds: n }), LIMITS.contextRounds],

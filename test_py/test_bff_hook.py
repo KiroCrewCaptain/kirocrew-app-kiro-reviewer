@@ -282,7 +282,7 @@ async def test_a_second_refusal_is_an_auth_error(fake):
 @pytest.mark.asyncio
 async def test_an_error_names_its_type_without_the_namespace(fake):
     fake.reply(
-        400, {"__type": "com.amazon.kirowebportalservice.bearer#ValidationException", "message": "bad id"}
+        400, {"__type": "com.example.kiro#ValidationException", "message": "bad id"}
     )
     with pytest.raises(BffError) as raised:
         await BffClient(fake.base, FakeTokens(CRED)).call("GetCodeReview", {})

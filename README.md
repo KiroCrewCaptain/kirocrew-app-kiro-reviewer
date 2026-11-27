@@ -336,7 +336,7 @@ No secrets are stored in the repo or the config; the API key stays in the local 
 (`src/client/bff.ts`), and maps the reply back. Un-suppress has no BFF operation and fails as `UNSUPPORTED`. The BFF
 leaves `counts` off an unfinished iteration; the tools see zeros. `code_review_status` checks the endpoint and the key
 with one read of a review id that cannot exist. The key is sent only to the configured endpoint, and a redirect is
-refused. The BFF has its own request size limit (2,000,000 bytes once it is deployed), so a request over 1,000,000 bytes is refused by the BFF until then.
+refused. The BFF refuses a request over 1,000,000 bytes.
 
 ### Kiro sign-in through the gateway (`backend/`)
 
@@ -379,7 +379,7 @@ action, not the product.
 
 ### Service results shown
 
-- **Limits:** the client pre-checks the same input limits as the service; `rules.autosdeYamlBytes` and `rules.reviewMdBytes` are 131,072 bytes
+- **Limits:** the client pre-checks the same input limits as the service; `rules.reviewRulesYamlBytes` and `rules.reviewMdBytes` are 131,072 bytes
   (128 KB) each.
 - **File exclusion:** the client sends the whole diff; the service excludes generated, fixture, lock and vendored
   files. The prepare summary says so, `code_review_submit`
