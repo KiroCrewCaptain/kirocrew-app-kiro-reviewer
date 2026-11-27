@@ -22,6 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # For /kiro-review comments `ref` is empty and the default branch is checked out. The action
+      # reads the PR from the API, skips fork PRs and fetches refs/pull/<n>/head itself.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ github.event.pull_request.head.sha }}
