@@ -75,7 +75,7 @@ describe('buildPayload', () => {
     const p = buildPayload(base);
     expect(p).toMatchObject({
       level: 'standard',
-      iterationBudget: 3,
+      iterationBudget: 20,
       base: { ref: 'origin/mainline', commit: SHA_B },
       head: { ref: 'feature/x', commit: SHA_C },
       rules: { source: 'base', revision: SHA_B, reviewMd: '# Guidance\n' },

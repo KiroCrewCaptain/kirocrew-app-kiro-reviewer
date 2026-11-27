@@ -46,7 +46,7 @@ export const prepareInputShape = {
     .min(1)
     .max(LIMITS.iterationBudgetMax)
     .optional()
-    .describe('Max iterations, 1..50 (new reviews only).'),
+    .describe('Max iterations, 1..20, default 20 (new reviews only).'),
   contextFiles: z.array(z.string().min(1)).optional().describe('Up to 20 repo-relative files the user approved.'),
   includeUncommitted: z.boolean().optional().describe('Diff the working tree instead of HEAD (default false).'),
   reviewId: z.string().regex(REVIEW_ID_RE).optional().describe('Existing review; prepares a resubmit.'),
