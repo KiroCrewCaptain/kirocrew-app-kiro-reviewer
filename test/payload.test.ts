@@ -31,7 +31,7 @@ function summary(overrides: Partial<PayloadSummary> = {}): PayloadSummary {
     files: [{ path: 'src/users.ts', status: 'modified', added: 3, removed: 1 }],
     diffBytes: 1234,
     changedLines: 4,
-    rules: { reviewMd: true, revision: SHA_B },
+    rules: { reviewRulesYaml: true, reviewMd: true, revision: SHA_B },
     contextFiles: [{ path: 'docs/spec.md', bytes: 99 }],
     redactions: [],
     level: 'standard',

@@ -147,6 +147,12 @@ export async function prepareTool(input: unknown, deps: ToolDeps) {
   const redactions: RedactionLocation[] = [];
   const diff = redactDiff(repo.diff);
   redactions.push(...diff.redactions);
+  let reviewRulesYaml = repo.rules.reviewRulesYaml;
+  if (reviewRulesYaml !== undefined) {
+    const r = redactText(reviewRulesYaml, 'REVIEW_RULES.yaml');
+    reviewRulesYaml = r.text;
+    redactions.push(...r.redactions);
+  }
   let reviewMd = repo.rules.reviewMd;
   if (reviewMd !== undefined) {
     const r = redactText(reviewMd, 'REVIEW.md');
@@ -203,7 +209,10 @@ export async function prepareTool(input: unknown, deps: ToolDeps) {
     return { ...r, comment: rc.text };
   });
   if (responses.length > 0) checkResponsesLimits(responses);
-  const rules = reviewMd !== undefined ? { reviewMd } : {};
+  const rules = {
+    ...(reviewRulesYaml !== undefined ? { reviewRulesYaml } : {}),
+    ...(reviewMd !== undefined ? { reviewMd } : {}),
+  };
 
   // Step 9: client limit pre-check.
   const diffPaths = info.files.flatMap((f) => [f.path, ...(f.oldPath && f.oldPath !== f.path ? [f.oldPath] : [])]);
@@ -262,6 +271,7 @@ export async function prepareTool(input: unknown, deps: ToolDeps) {
     diffBytes: utf8Bytes(diff.text),
     changedLines: info.changedLines,
     rules: {
+      reviewRulesYaml: rules.reviewRulesYaml !== undefined,
       reviewMd: rules.reviewMd !== undefined,
       revision: repo.mergeBase,
     },

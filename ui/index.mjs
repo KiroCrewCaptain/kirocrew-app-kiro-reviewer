@@ -1149,7 +1149,12 @@ function ContextView({ stored, review, expired }) {
         ),
       );
     }
-    const rules = sub.rules ? [['REVIEW.md', sub.rules.reviewMd]].filter(([, content]) => content) : [];
+    const rules = sub.rules
+      ? [
+          ['REVIEW_RULES.yaml', sub.rules.reviewRulesYaml],
+          ['REVIEW.md', sub.rules.reviewMd],
+        ].filter(([, content]) => content)
+      : [];
     if (rules.length) {
       out.push(sectionHead('ruh', `Rules (from ${sub.base.ref})`));
       for (const [name, content] of rules) out.push(h(FileContent, { key: 'r' + name, path: name, content }));

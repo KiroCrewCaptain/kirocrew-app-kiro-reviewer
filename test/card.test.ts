@@ -109,7 +109,7 @@ describe('chat card', () => {
       files: [{ path: 'src/a.ts', status: 'M', added: 3, removed: 1 }],
       diffBytes: 120,
       changedLines: 4,
-      rules: { reviewMd: true, revision: 'r' },
+      rules: { reviewRulesYaml: true, reviewMd: true, revision: 'r' },
       contextFiles: [],
       redactions: [{ file: 'x' }, { file: 'y' }],
     };
