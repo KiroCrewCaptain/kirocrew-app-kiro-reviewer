@@ -9,6 +9,7 @@ import {
   checkRequestBytes,
   checkResponsesLimits,
   checkSuppressReason,
+  diffFits,
   LIMITS,
   MAX_CONTEXT_ROUNDS_PER_REVIEW,
   type LimitName,
@@ -30,7 +31,7 @@ function limitOf(fn: () => void): LimitName | null {
 
 describe('client limits (same names as the service)', () => {
   const cases: Array<[LimitName, (n: number) => PayloadLimitInput, number]> = [
-    ['diff.bytes', (n) => ({ ...ok, diff: 'a'.repeat(n) }), LIMITS.diffBytes],
+    ['diff.chars', (n) => ({ ...ok, diff: 'a'.repeat(n) }), LIMITS.diffChars],
     ['diff.files', (n) => ({ ...ok, diffFiles: n }), LIMITS.diffFiles],
     ['path.chars', (n) => ({ ...ok, diffPaths: ['p'.repeat(n)] }), LIMITS.pathChars],
     ['diff.changedLines', (n) => ({ ...ok, changedLines: n }), LIMITS.diffChangedLines],
@@ -70,6 +71,25 @@ describe('client limits (same names as the service)', () => {
       expect(limitOf(() => checkPayloadLimits(make(max + 1)))).toBe(name);
     });
   }
+
+  it('diff.chars counts code points, not bytes or UTF-16 units', () => {
+    // 4 utf-8 bytes and 2 UTF-16 units per code point.
+    expect(limitOf(() => checkPayloadLimits({ ...ok, diff: '😀'.repeat(LIMITS.diffChars) }))).toBeNull();
+    expect(limitOf(() => checkPayloadLimits({ ...ok, diff: '😀'.repeat(LIMITS.diffChars + 1) }))).toBe('diff.chars');
+    expect(limitOf(() => checkPayloadLimits({ ...ok, diff: 'é'.repeat(LIMITS.diffChars) }))).toBeNull();
+    expect(limitOf(() => checkPayloadLimits({ ...ok, diff: 'é'.repeat(LIMITS.diffChars + 1) }))).toBe('diff.chars');
+  });
+
+  it('diff.bytes is still checked', () => {
+    expect(limitOf(() => checkPayloadLimits({ ...ok, diff: 'a'.repeat(LIMITS.diffBytes + 1) }))).toBe('diff.bytes');
+  });
+
+  it('diffFits applies both diff limits', () => {
+    expect(diffFits('a'.repeat(LIMITS.diffChars))).toBe(true);
+    expect(diffFits('a'.repeat(LIMITS.diffChars + 1))).toBe(false);
+    expect(diffFits('😀'.repeat(LIMITS.diffChars))).toBe(true);
+    expect(diffFits('😀'.repeat(LIMITS.diffChars + 1))).toBe(false);
+  });
 
   it('git metadata constants mirror the service', () => {
     expect(LIMITS.intentChars).toBe(2_000);
@@ -147,6 +167,7 @@ describe('client limits (same names as the service)', () => {
     expect(LIMITS).toMatchObject({
       requestBytes: 2_000_000,
       diffBytes: 1_000_000,
+      diffChars: 200_000,
       diffFiles: 50,
       diffChangedLines: 8_000,
       contextFiles: 20,

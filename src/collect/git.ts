@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ToolError } from '../errors.js';
 import type { LimitName } from '../limits.js';
-import { limitExceeded, LIMITS, utf8Bytes } from '../limits.js';
+import { diffFits, limitExceeded, LIMITS, utf8Bytes } from '../limits.js';
 import { isDeniedPath, isWellFormedPath } from '../safety.js';
 
 /**
@@ -19,7 +19,7 @@ export const GIT_MAX_BUFFER = 2 * 1024 * 1024;
 export const GIT_TIMEOUT_MS = 30_000;
 export const REF_RE = /^[A-Za-z0-9._/@^~-]{1,200}$/;
 
-/** Lines of context around each change, widest first. The first diff within the size limit is used. */
+/** Lines of context around each change, widest first. The first diff within the diff.bytes and diff.chars limits is used. */
 const DIFF_CONTEXT_TIERS = [50, 6, 3];
 
 export function validateRef(ref: string): void {
@@ -528,7 +528,7 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
   }
   if (!/^[0-9a-f]{40}$/.test(mergeBase)) throw new ToolError('NO_MERGE_BASE', 'Could not compute the merge-base.');
 
-  // Step 5: diff from the merge-base, with the widest context in DIFF_CONTEXT_TIERS that fits the size limit.
+  // Step 5: diff from the merge-base, with the widest context in DIFF_CONTEXT_TIERS that fits the diff limits.
   const diffWith = async (context: number): Promise<string> => {
     const diffArgs = ['diff', '--no-color', '--no-ext-diff', '--no-textconv', `-U${context}`, '-M', mergeBase];
     if (!input.includeUncommitted) diffArgs.push(headSha);
@@ -546,7 +546,7 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
     const narrowest = i === DIFF_CONTEXT_TIERS.length - 1;
     try {
       diff = await diffWith(context);
-      if (narrowest || utf8Bytes(diff) <= LIMITS.diffBytes) break;
+      if (narrowest || diffFits(diff)) break;
     } catch (e) {
       if (narrowest || !(e instanceof ToolError) || e.code !== 'LIMIT_EXCEEDED') throw e;
     }

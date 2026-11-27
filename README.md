@@ -119,7 +119,9 @@ missing.
 
 Limits you will meet:
 
-- The change can be at most about 1 MB of diff. Generated, lock and vendored files are left out by the service.
+- The diff can be at most 200,000 characters (Unicode code points, not bytes). The app sends 50 lines of context
+  around each change, then 6, then 3, whichever is the widest that fits. Generated, lock and vendored files are left
+  out by the service.
 - A review has at most 2 rounds in which the reviewer can ask for extra context.
 - The review covers committed changes against the branch you name. Ask for uncommitted changes explicitly.
 - **Unsuppress** does not reach the service yet: the page shows the finding again, but the service keeps suppressing it.
