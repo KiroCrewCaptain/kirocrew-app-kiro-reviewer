@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { collectRepo, grepRepo, GREP_FUNCTION_LINES, validateRef } from '../src/collect/git.js';
 import { ToolError } from '../src/errors.js';
 import { LIMITS } from '../src/limits.js';
+import { redactDiff } from '../src/redact.js';
 import { git, makeRepo, rm, tempDir, write } from './helpers.js';
 
 const dirs: string[] = [];
@@ -129,9 +130,15 @@ describe('collectRepo', () => {
     expect(c.diff).not.toContain('\n export const v151 = 151;');
   });
 
-  it('falls back to 6 lines of context when the 50-line diff is over the diff size limit', async () => {
+  const diffOf = (r: string, base: string, context: number) =>
+    execFileSync('git', ['-C', r, 'diff', `-U${context}`, base, 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).toString(
+      'utf8',
+    );
+  const chars = (s: string) => [...s].length;
+
+  it('falls back to 6 lines of context when the 50-line diff is over the diff.chars limit', async () => {
     const r = repo();
-    const lines = Array.from({ length: 60_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
+    const lines = Array.from({ length: 10_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
     write(r, 'src/big.ts', lines.join('\n') + '\n');
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add big');
@@ -139,18 +146,17 @@ describe('collectRepo', () => {
     for (let i = 50; i < lines.length; i += 100) lines[i] = `export const v${i + 1} = "changed";`;
     write(r, 'src/big.ts', lines.join('\n') + '\n');
     git(r, 'commit', '-q', '-am', 'change every 100th line');
-    const size = (context: number) =>
-      execFileSync('git', ['-C', r, 'diff', `-U${context}`, 'base2', 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).length;
-    expect(size(50)).toBeGreaterThan(LIMITS.diffBytes);
-    expect(size(6)).toBeLessThan(LIMITS.diffBytes);
-    expect(size(3)).toBeLessThan(size(6));
+    // ASCII: well under diff.bytes, so only diff.chars forces the fallback.
+    expect(chars(diffOf(r, 'base2', 50))).toBeGreaterThan(LIMITS.diffChars);
+    expect(Buffer.byteLength(diffOf(r, 'base2', 50))).toBeLessThan(LIMITS.diffBytes);
+    expect(chars(diffOf(r, 'base2', 6))).toBeLessThan(LIMITS.diffChars);
     const c = await collectRepo({ repoPath: r, base: 'base2', includeUncommitted: false, contextFiles: [] });
-    expect(Buffer.byteLength(c.diff)).toBe(size(6));
+    expect(c.diff).toBe(diffOf(r, 'base2', 6));
   });
 
-  it('falls back to 3 lines of context when the 6-line diff is also over the diff size limit', async () => {
+  it('falls back to 3 lines of context when the 6-line diff is also over the diff.chars limit', async () => {
     const r = repo();
-    const lines = Array.from({ length: 60_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
+    const lines = Array.from({ length: 12_000 }, (_, i) => `export const v${i + 1} = ${i + 1};`);
     write(r, 'src/big.ts', lines.join('\n') + '\n');
     git(r, 'add', '-A');
     git(r, 'commit', '-q', '-m', 'add big');
@@ -158,12 +164,46 @@ describe('collectRepo', () => {
     for (let i = 10; i < lines.length; i += 20) lines[i] = `export const v${i + 1} = "changed";`;
     write(r, 'src/big.ts', lines.join('\n') + '\n');
     git(r, 'commit', '-q', '-am', 'change every 20th line');
-    const size = (context: number) =>
-      execFileSync('git', ['-C', r, 'diff', `-U${context}`, 'base3', 'HEAD'], { maxBuffer: 64 * 1024 * 1024 }).length;
-    expect(size(6)).toBeGreaterThan(LIMITS.diffBytes);
-    expect(size(3)).toBeLessThan(LIMITS.diffBytes);
+    expect(chars(diffOf(r, 'base3', 6))).toBeGreaterThan(LIMITS.diffChars);
+    expect(chars(diffOf(r, 'base3', 3))).toBeLessThan(LIMITS.diffChars);
     const c = await collectRepo({ repoPath: r, base: 'base3', includeUncommitted: false, contextFiles: [] });
-    expect(Buffer.byteLength(c.diff)).toBe(size(3));
+    expect(c.diff).toBe(diffOf(r, 'base3', 3));
+  });
+
+  it('keeps 50 lines of context for a non-ASCII diff over 200,000 bytes but within diff.chars', async () => {
+    const r = repo();
+    const lines = Array.from({ length: 5_000 }, (_, i) => `export const v${i + 1} = ${i + 1}; // 😀😀😀😀😀😀`);
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add big');
+    git(r, 'branch', 'base4');
+    for (let i = 50; i < lines.length; i += 100) lines[i] = `export const v${i + 1} = "changed"; // 😀😀😀😀😀😀`;
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'commit', '-q', '-am', 'change every 100th line');
+    const wide = diffOf(r, 'base4', 50);
+    expect(Buffer.byteLength(wide)).toBeGreaterThan(LIMITS.diffChars);
+    expect(wide.length).toBeGreaterThan(LIMITS.diffChars);
+    expect(chars(wide)).toBeLessThan(LIMITS.diffChars);
+    const c = await collectRepo({ repoPath: r, base: 'base4', includeUncommitted: false, contextFiles: [] });
+    expect(c.diff).toBe(wide);
+  });
+
+  it('measures the redacted diff when choosing the context tier', async () => {
+    const r = repo();
+    const line = (i: number, v: string) => `export const v${i} = ${v}; // password=abcdefgh`;
+    const lines = Array.from({ length: 4_000 }, (_, i) => line(i + 1, String(i + 1)));
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'add', '-A');
+    git(r, 'commit', '-q', '-m', 'add big');
+    git(r, 'branch', 'base5');
+    for (let i = 50; i < lines.length; i += 100) lines[i] = line(i + 1, '"changed"');
+    write(r, 'src/big.ts', lines.join('\n') + '\n');
+    git(r, 'commit', '-q', '-am', 'change every 100th line');
+    // Each redaction marker is longer than the 8-character value it replaces.
+    expect(chars(diffOf(r, 'base5', 50))).toBeLessThan(LIMITS.diffChars);
+    expect(chars(redactDiff(diffOf(r, 'base5', 50)).text)).toBeGreaterThan(LIMITS.diffChars);
+    const c = await collectRepo({ repoPath: r, base: 'base5', includeUncommitted: false, contextFiles: [] });
+    expect(c.diff).toBe(diffOf(r, 'base5', 6));
   });
 
   it('includeUncommitted diffs the working tree; otherwise only commits', async () => {

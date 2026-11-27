@@ -22166,6 +22166,8 @@ var MAX_CONTEXT_ROUNDS_PER_REVIEW = 2;
 var LIMITS = {
   requestBytes: 2e6,
   diffBytes: 1e6,
+  /** BFF CodeReviewDiff @length(max: 200000): Unicode code points, checked before the service sees the request. */
+  diffChars: 2e5,
   diffFiles: 50,
   diffChangedLines: 8e3,
   contextFiles: 20,
@@ -22205,8 +22207,10 @@ function checkLimit(limit, max, actual) {
 __name(checkLimit, "checkLimit");
 var utf8Bytes = /* @__PURE__ */ __name((s) => Buffer.byteLength(s, "utf8"), "utf8Bytes");
 var charCount = /* @__PURE__ */ __name((s) => [...s].length, "charCount");
+var diffFits = /* @__PURE__ */ __name((diff) => utf8Bytes(diff) <= LIMITS.diffBytes && charCount(diff) <= LIMITS.diffChars, "diffFits");
 function checkPayloadLimits(p) {
   checkLimit("diff.bytes", LIMITS.diffBytes, utf8Bytes(p.diff));
+  checkLimit("diff.chars", LIMITS.diffChars, charCount(p.diff));
   checkLimit("diff.files", LIMITS.diffFiles, p.diffFiles);
   for (const path11 of p.diffPaths) checkLimit("path.chars", LIMITS.pathChars, charCount(path11));
   checkLimit("diff.changedLines", LIMITS.diffChangedLines, p.changedLines);
@@ -23055,7 +23059,7 @@ async function collectRepo(input2) {
     const narrowest = i === DIFF_CONTEXT_TIERS.length - 1;
     try {
       diff = await diffWith(context2);
-      if (narrowest || utf8Bytes(diff) <= LIMITS.diffBytes) break;
+      if (narrowest || diffFits(redactDiff(diff).text)) break;
     } catch (e) {
       if (narrowest || !(e instanceof ToolError) || e.code !== "LIMIT_EXCEEDED") throw e;
     }

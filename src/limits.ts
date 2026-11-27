@@ -13,6 +13,8 @@ export const MAX_CONTEXT_ROUNDS_PER_REVIEW = 2;
 export const LIMITS = {
   requestBytes: 2_000_000,
   diffBytes: 1_000_000,
+  /** BFF CodeReviewDiff @length(max: 200000): Unicode code points, checked before the service sees the request. */
+  diffChars: 200_000,
   diffFiles: 50,
   diffChangedLines: 8_000,
   contextFiles: 20,
@@ -42,6 +44,7 @@ export const LIMITS = {
 export type LimitName =
   | 'request.bytes'
   | 'diff.bytes'
+  | 'diff.chars'
   | 'diff.files'
   | 'diff.changedLines'
   | 'context.files'
@@ -79,6 +82,10 @@ export const utf8Bytes = (s: string): number => Buffer.byteLength(s, 'utf8');
 /** Length in Unicode code points (matches the service). */
 export const charCount = (s: string): number => [...s].length;
 
+/** Whether a diff is within both the diff.bytes and the diff.chars limits. */
+export const diffFits = (diff: string): boolean =>
+  utf8Bytes(diff) <= LIMITS.diffBytes && charCount(diff) <= LIMITS.diffChars;
+
 export interface PayloadLimitInput {
   diff: string;
   diffFiles: number;
@@ -97,6 +104,7 @@ export interface PayloadLimitInput {
 /** Client pre-check of every input limit. */
 export function checkPayloadLimits(p: PayloadLimitInput): void {
   checkLimit('diff.bytes', LIMITS.diffBytes, utf8Bytes(p.diff));
+  checkLimit('diff.chars', LIMITS.diffChars, charCount(p.diff));
   checkLimit('diff.files', LIMITS.diffFiles, p.diffFiles);
   for (const path of p.diffPaths) checkLimit('path.chars', LIMITS.pathChars, charCount(path));
   checkLimit('diff.changedLines', LIMITS.diffChangedLines, p.changedLines);
