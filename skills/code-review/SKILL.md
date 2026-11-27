@@ -16,7 +16,7 @@ The user asking for a review is the go-ahead to send the review payload and any 
 ## Workflow
 
 1. **When:** the user asks for a pre-PR review (or a Kiro Reviewer review) of their branch.
-2. **Choose the base:** use the base the user states; otherwise use `origin/mainline` or `origin/main`, whichever exists (check with `git rev-parse --verify`).
+2. **Choose the base:** use the base the user states; otherwise use the remote default branch (`git symbolic-ref refs/remotes/origin/HEAD`), else `origin/main`.
 3. **Commit, or ask about `includeUncommitted`:** if the working tree has uncommitted changes, ask the user to commit them, or ask whether to review them with `includeUncommitted: true` (untracked files are never included).
 4. **Pick context files:** only files the user approves. List them to the user before preparing. At most 20.
 5. **Write the intent (optional):** from the task, write one short paragraph stating what this change is meant to do (its goal, not a diff summary). Pass it as `intent`. It is shown in the summary and sent to the reviewer only as an **untrusted author claim** for lightweight spec-drift checking — the reviewer never lets it suppress or downgrade a finding. Omit it if there is no clear stated goal. Do not include secrets; the tool redacts them anyway.

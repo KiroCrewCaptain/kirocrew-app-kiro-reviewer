@@ -100,7 +100,7 @@
             },
             "base": {
               "type": "string",
-              "description": "Base ref, e.g. origin/mainline."
+              "description": "Base ref, e.g. origin/main."
             },
             "level": {
               "type": "string",

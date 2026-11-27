@@ -38,7 +38,7 @@ export const prepareInputShape = {
     .string()
     .regex(REF_RE)
     .refine((s) => !s.startsWith('-'), { message: 'must not start with -' })
-    .describe('Base ref, e.g. origin/mainline.'),
+    .describe('Base ref, e.g. origin/main.'),
   level: z.enum(['quick', 'standard', 'deep']).optional().describe('Review depth (new reviews only).'),
   iterationBudget: z
     .number()
