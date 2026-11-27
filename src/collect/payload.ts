@@ -46,7 +46,7 @@ export interface PayloadSummary {
   files: Array<{ path: string; status: FileStatus; added: number; removed: number }>;
   diffBytes: number;
   changedLines: number;
-  rules: { reviewMd: boolean; revision: string };
+  rules: { reviewRulesYaml: boolean; reviewMd: boolean; revision: string };
   contextFiles: Array<{ path: string; bytes: number }>;
   /** includeChangedFiles: changed files sent in full (they are also in contextFiles), and those left out. */
   includedChangedFiles?: { attached: string[]; skipped: ChangedFileSkip[] };
@@ -153,7 +153,9 @@ function render(s: PayloadSummary, caps: SummaryCaps): string {
   if (s.testHook) lines.push(`- Test hook: ${s.testHook}`);
   lines.push(`- Diff: ${s.files.length} files, ${s.diffBytes} bytes, ${s.changedLines} changed lines`);
   lines.push('- Note: the service excludes generated, fixture, lock and vendored files by default.');
-  lines.push(`- REVIEW.md from merge-base ${code(short(s.rules.revision))}: ${s.rules.reviewMd ? 'yes' : 'none'}`);
+  const rev = code(short(s.rules.revision));
+  lines.push(`- REVIEW_RULES.yaml from merge-base ${rev}: ${s.rules.reviewRulesYaml ? 'yes' : 'none'}`);
+  lines.push(`- REVIEW.md from merge-base ${rev}: ${s.rules.reviewMd ? 'yes' : 'none'}`);
   const ctxBytes = s.contextFiles.reduce((a, c) => a + c.bytes, 0);
   lines.push(`- Context files: ${s.contextFiles.length} (${ctxBytes} bytes)`);
   for (const c of s.contextFiles.slice(0, caps.context)) lines.push(`  - ${code(c.path)} (${c.bytes} bytes)`);
@@ -229,7 +231,7 @@ export interface BuildPayloadInput {
   headSha: string;
   includeUncommitted: boolean;
   diff: string;
-  rules?: { reviewMd?: string };
+  rules?: { reviewRulesYaml?: string; reviewMd?: string };
   context: Array<{ path: string; content: string }>;
   repo: string;
   clientVersion: string;
@@ -272,8 +274,15 @@ export function buildPayload(i: BuildPayloadInput): SubmitRequest {
   if (i.intent !== undefined && i.intent !== '') payload.intent = i.intent;
   if (i.commits && i.commits.length > 0) payload.commits = i.commits;
   if (i.reviewId && i.responses && i.responses.length > 0) payload.responses = i.responses;
-  if (i.rules?.reviewMd !== undefined) {
-    payload.rules = { source: 'base', revision: i.mergeBase, ...i.rules };
+  if (i.rules?.reviewRulesYaml !== undefined || i.rules?.reviewMd !== undefined) {
+    const { reviewRulesYaml, reviewMd } = i.rules;
+    payload.rules = {
+      source: 'base',
+      revision: i.mergeBase,
+      // The BFF still names this field autosdeYaml.
+      ...(reviewRulesYaml !== undefined ? { autosdeYaml: reviewRulesYaml } : {}),
+      ...(reviewMd !== undefined ? { reviewMd } : {}),
+    };
   }
   if (i.context.length > 0) payload.context = i.context;
   return payload;

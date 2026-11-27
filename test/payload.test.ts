@@ -31,7 +31,7 @@ function summary(overrides: Partial<PayloadSummary> = {}): PayloadSummary {
     files: [{ path: 'src/users.ts', status: 'modified', added: 3, removed: 1 }],
     diffBytes: 1234,
     changedLines: 4,
-    rules: { reviewMd: true, revision: SHA_B },
+    rules: { reviewRulesYaml: true, reviewMd: true, revision: SHA_B },
     contextFiles: [{ path: 'docs/spec.md', bytes: 99 }],
     redactions: [],
     level: 'standard',
@@ -70,6 +70,11 @@ describe('buildPayload', () => {
     clientVersion: '0.1.0',
     clientToken: 'f'.repeat(32),
   };
+
+  it('sends REVIEW_RULES.yaml as the autosdeYaml wire field', () => {
+    const p = buildPayload({ ...base, rules: { reviewRulesYaml: 'custom-rules: []\n' } });
+    expect(p.rules).toEqual({ source: 'base', revision: SHA_B, autosdeYaml: 'custom-rules: []\n' });
+  });
 
   it('builds a submit request with base rules and merge-base commit', () => {
     const p = buildPayload(base);

@@ -158,6 +158,7 @@ function preparedHtml(d, context) {
       'Diff',
       `${s.files.length} file${s.files.length === 1 ? '' : 's'}, ${s.changedLines} changed lines, ${s.diffBytes} bytes`,
     ]);
+    rows.push(['REVIEW_RULES.yaml', s.rules.reviewRulesYaml ? 'from the merge-base' : 'none']);
     rows.push(['REVIEW.md', s.rules.reviewMd ? 'from the merge-base' : 'none']);
     if (s.contextFiles.length) rows.push(['Context files', s.contextFiles.map((c) => c.path).join(', ')]);
     if (s.level)

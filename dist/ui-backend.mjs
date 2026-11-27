@@ -22173,6 +22173,7 @@ var LIMITS = {
   contextFiles: 20,
   contextFileBytes: 1e5,
   contextTotalBytes: 2e5,
+  rulesAutosdeYamlBytes: 131072,
   rulesReviewMdBytes: 131072,
   pathChars: 512,
   suppressReasonChars: 500,
@@ -22231,6 +22232,9 @@ function checkPayloadLimits(p) {
     total += bytes;
   }
   checkLimit("context.totalBytes", LIMITS.contextTotalBytes, total);
+  if (p.rules?.reviewRulesYaml !== void 0) {
+    checkLimit("rules.autosdeYamlBytes", LIMITS.rulesAutosdeYamlBytes, utf8Bytes(p.rules.reviewRulesYaml));
+  }
   if (p.rules?.reviewMd !== void 0) {
     checkLimit("rules.reviewMdBytes", LIMITS.rulesReviewMdBytes, utf8Bytes(p.rules.reviewMd));
   }
@@ -22720,9 +22724,9 @@ function decodeText(buf) {
   }
 }
 __name(decodeText, "decodeText");
-async function showRuleFile(top, mergeBase, name) {
+async function showRuleFile(top, mergeBase, name, limit) {
   try {
-    return await gitText(top, ["show", `${mergeBase}:${name}`], "rules.reviewMdBytes");
+    return await gitText(top, ["show", `${mergeBase}:${name}`], limit);
   } catch (e) {
     if (e instanceof GitFailure && /does not exist|exists on disk, but not in/.test(e.stderr)) return void 0;
     if (e instanceof ToolError) throw e;
@@ -23065,7 +23069,8 @@ async function collectRepo(input2) {
     }
   }
   if (diff.trim() === "") throw new ToolError("EMPTY_DIFF", "There are no changes between the merge-base and HEAD.");
-  const reviewMd = await showRuleFile(top, mergeBase, "REVIEW.md");
+  const reviewRulesYaml = await showRuleFile(top, mergeBase, "REVIEW_RULES.yaml", "rules.autosdeYamlBytes");
+  const reviewMd = await showRuleFile(top, mergeBase, "REVIEW.md", "rules.reviewMdBytes");
   const commits = await collectCommits(top, mergeBase, headSha);
   const context = [];
   for (const rel of input2.contextFiles) {
@@ -23089,7 +23094,10 @@ async function collectRepo(input2) {
     headRef,
     mergeBase,
     diff,
-    rules: reviewMd !== void 0 ? { reviewMd } : {},
+    rules: {
+      ...reviewRulesYaml !== void 0 ? { reviewRulesYaml } : {},
+      ...reviewMd !== void 0 ? { reviewMd } : {}
+    },
     context,
     commits
   };
@@ -23287,7 +23295,9 @@ function render(s, caps) {
   if (s.testHook) lines.push(`- Test hook: ${s.testHook}`);
   lines.push(`- Diff: ${s.files.length} files, ${s.diffBytes} bytes, ${s.changedLines} changed lines`);
   lines.push("- Note: the service excludes generated, fixture, lock and vendored files by default.");
-  lines.push(`- REVIEW.md from merge-base ${code(short(s.rules.revision))}: ${s.rules.reviewMd ? "yes" : "none"}`);
+  const rev = code(short(s.rules.revision));
+  lines.push(`- REVIEW_RULES.yaml from merge-base ${rev}: ${s.rules.reviewRulesYaml ? "yes" : "none"}`);
+  lines.push(`- REVIEW.md from merge-base ${rev}: ${s.rules.reviewMd ? "yes" : "none"}`);
   const ctxBytes = s.contextFiles.reduce((a, c) => a + c.bytes, 0);
   lines.push(`- Context files: ${s.contextFiles.length} (${ctxBytes} bytes)`);
   for (const c of s.contextFiles.slice(0, caps.context)) lines.push(`  - ${code(c.path)} (${c.bytes} bytes)`);
@@ -23367,8 +23377,15 @@ function buildPayload(i) {
   if (i.intent !== void 0 && i.intent !== "") payload2.intent = i.intent;
   if (i.commits && i.commits.length > 0) payload2.commits = i.commits;
   if (i.reviewId && i.responses && i.responses.length > 0) payload2.responses = i.responses;
-  if (i.rules?.reviewMd !== void 0) {
-    payload2.rules = { source: "base", revision: i.mergeBase, ...i.rules };
+  if (i.rules?.reviewRulesYaml !== void 0 || i.rules?.reviewMd !== void 0) {
+    const { reviewRulesYaml, reviewMd } = i.rules;
+    payload2.rules = {
+      source: "base",
+      revision: i.mergeBase,
+      // The BFF still names this field autosdeYaml.
+      ...reviewRulesYaml !== void 0 ? { autosdeYaml: reviewRulesYaml } : {},
+      ...reviewMd !== void 0 ? { reviewMd } : {}
+    };
   }
   if (i.context.length > 0) payload2.context = i.context;
   return payload2;
@@ -24348,6 +24365,12 @@ async function prepareTool(input2, deps) {
   const redactions = [];
   const diff = redactDiff(repo.diff);
   redactions.push(...diff.redactions);
+  let reviewRulesYaml = repo.rules.reviewRulesYaml;
+  if (reviewRulesYaml !== void 0) {
+    const r = redactText(reviewRulesYaml, "REVIEW_RULES.yaml");
+    reviewRulesYaml = r.text;
+    redactions.push(...r.redactions);
+  }
   let reviewMd = repo.rules.reviewMd;
   if (reviewMd !== void 0) {
     const r = redactText(reviewMd, "REVIEW.md");
@@ -24401,7 +24424,10 @@ async function prepareTool(input2, deps) {
     return { ...r, comment: rc.text };
   });
   if (responses.length > 0) checkResponsesLimits(responses);
-  const rules = reviewMd !== void 0 ? { reviewMd } : {};
+  const rules = {
+    ...reviewRulesYaml !== void 0 ? { reviewRulesYaml } : {},
+    ...reviewMd !== void 0 ? { reviewMd } : {}
+  };
   const diffPaths = info.files.flatMap((f) => [f.path, ...f.oldPath && f.oldPath !== f.path ? [f.oldPath] : []]);
   const wantManifest = ((contextRounds ?? 0) > 0 || args.reviewId !== void 0) && args.includeManifest !== false;
   const manifest = wantManifest ? buildManifest(await listTrackedFiles(repo.toplevel, repo.headSha, includeUncommitted), diffPaths) : [];
@@ -24454,6 +24480,7 @@ async function prepareTool(input2, deps) {
     diffBytes: utf8Bytes(diff.text),
     changedLines: info.changedLines,
     rules: {
+      reviewRulesYaml: rules.reviewRulesYaml !== void 0,
       reviewMd: rules.reviewMd !== void 0,
       revision: repo.mergeBase
     },

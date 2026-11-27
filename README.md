@@ -134,7 +134,7 @@ Limits you will meet:
   It holds your list of reviews, the diffs this computer sent, and optional settings in `config.json`. Prepared
   payloads are kept for 30 minutes.
 - **What leaves your computer:** only after you say yes, the redacted diff, commit messages (no author names, emails or
-  times), the rules file `REVIEW.md` and any files you approved go to the Kiro review service at `https://app.kiro.dev`
+  times), the rules files `REVIEW_RULES.yaml` and `REVIEW.md` and any files you approved go to the Kiro review service at `https://app.kiro.dev`
   (or `https://eu-central-1.app.kiro.dev` if you pick the Europe region on the page). Your API key goes only to that
   address.
 - **Your API key:** set `KIRO_API_KEY`, or save it as the first line of `data/kiro-api-key` and make it private with
@@ -215,7 +215,7 @@ build/test/lint commands and the npm pin are in [Build, test, lint](#build-test-
 
 | Tool                          | Auto-approve | Network             | What it does                                                                                                                                                                                                                                                                                                                                                                                     |
 | ----------------------------- | ------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `code_review_prepare`         | yes          | no                  | Diff from the merge-base of `base` and HEAD, `REVIEW.md` from the merge-base, approved context files; redacts secrets; checks the service's input limits; stages the payload (`<dataDir>/prepared/prep-<16hex>.json`, 0600, 30 min); returns `preparedId`, `payloadDigest`, `summaryMarkdown` (≤ 4,000 chars)                                                                                    |
+| `code_review_prepare`         | yes          | no                  | Diff from the merge-base of `base` and HEAD, `REVIEW_RULES.yaml` and `REVIEW.md` from the merge-base, approved context files; redacts secrets; checks the service's input limits; stages the payload (`<dataDir>/prepared/prep-<16hex>.json`, 0600, 30 min); returns `preparedId`, `payloadDigest`, `summaryMarkdown` (≤ 4,000 chars)                                                            |
 | `code_review_submit`          | yes          | yes                 | Re-reads the staged payload; byte-exact digest check (`DIGEST_MISMATCH` / `PREPARED_NOT_FOUND`, no network); then the Kiro BFF `CreateCodeReview` (new) or `UpdateCodeReview` (resubmit)                                                                                                                                                                                                         |
 | `code_review_get`             | yes          | yes                 | Polls `GET /reviews/{id}` every 5 s for up to `waitSeconds` (0..90, default 60); one call never exceeds `waitSeconds + 20 s`; returns structured results plus Markdown                                                                                                                                                                                                                           |
 | `code_review_suppress`        | yes          | yes                 | `POST /reviews/{id}/findings/{fid}/suppress` with an optional reason (≤ 500 chars)                                                                                                                                                                                                                                                                                                               |
@@ -379,8 +379,8 @@ action, not the product.
 
 ### Service results shown
 
-- **Limits:** the client pre-checks the same input limits as the service; `rules.reviewMdBytes` is 131,072 bytes
-  (128 KB).
+- **Limits:** the client pre-checks the same input limits as the service; `rules.autosdeYamlBytes` and `rules.reviewMdBytes` are 131,072 bytes
+  (128 KB) each.
 - **File exclusion:** the client sends the whole diff; the service excludes generated, fixture, lock and vendored
   files. The prepare summary says so, `code_review_submit`
   lists the excluded files (count + first 20) and returns `excludedFiles`, and `code_review_get` prints an
