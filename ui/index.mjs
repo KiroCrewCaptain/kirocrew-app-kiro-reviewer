@@ -1151,7 +1151,7 @@ function ContextView({ stored, review, expired }) {
     }
     const rules = sub.rules
       ? [
-          ['REVIEW_RULES.yaml', sub.rules.reviewRulesYaml],
+          ['REVIEW_RULES.yaml', sub.rules.autosdeYaml],
           ['REVIEW.md', sub.rules.reviewMd],
         ].filter(([, content]) => content)
       : [];

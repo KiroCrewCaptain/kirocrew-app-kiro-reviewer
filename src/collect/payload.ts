@@ -271,7 +271,14 @@ export function buildPayload(i: BuildPayloadInput): SubmitRequest {
   if (i.commits && i.commits.length > 0) payload.commits = i.commits;
   if (i.reviewId && i.responses && i.responses.length > 0) payload.responses = i.responses;
   if (i.rules?.reviewRulesYaml !== undefined || i.rules?.reviewMd !== undefined) {
-    payload.rules = { source: 'base', revision: i.mergeBase, ...i.rules };
+    const { reviewRulesYaml, reviewMd } = i.rules;
+    payload.rules = {
+      source: 'base',
+      revision: i.mergeBase,
+      // The BFF still names this field autosdeYaml.
+      ...(reviewRulesYaml !== undefined ? { autosdeYaml: reviewRulesYaml } : {}),
+      ...(reviewMd !== undefined ? { reviewMd } : {}),
+    };
   }
   if (i.context.length > 0) payload.context = i.context;
   return payload;

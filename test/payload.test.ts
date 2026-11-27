@@ -71,6 +71,11 @@ describe('buildPayload', () => {
     clientToken: 'f'.repeat(32),
   };
 
+  it('sends REVIEW_RULES.yaml as the autosdeYaml wire field', () => {
+    const p = buildPayload({ ...base, rules: { reviewRulesYaml: 'custom-rules: []\n' } });
+    expect(p.rules).toEqual({ source: 'base', revision: SHA_B, autosdeYaml: 'custom-rules: []\n' });
+  });
+
   it('builds a submit request with base rules and merge-base commit', () => {
     const p = buildPayload(base);
     expect(p).toMatchObject({

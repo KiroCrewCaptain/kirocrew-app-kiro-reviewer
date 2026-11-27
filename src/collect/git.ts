@@ -114,7 +114,7 @@ async function showRuleFile(
   top: string,
   mergeBase: string,
   name: string,
-  limit: 'rules.reviewRulesYamlBytes' | 'rules.reviewMdBytes',
+  limit: 'rules.autosdeYamlBytes' | 'rules.reviewMdBytes',
 ): Promise<string | undefined> {
   try {
     return await gitText(top, ['show', `${mergeBase}:${name}`], limit);
@@ -563,7 +563,7 @@ export async function collectRepo(input: CollectInput): Promise<CollectedRepo> {
   if (diff.trim() === '') throw new ToolError('EMPTY_DIFF', 'There are no changes between the merge-base and HEAD.');
 
   // Step 6: rule files from the merge-base, so a branch can't rewrite its own review rules.
-  const reviewRulesYaml = await showRuleFile(top, mergeBase, 'REVIEW_RULES.yaml', 'rules.reviewRulesYamlBytes');
+  const reviewRulesYaml = await showRuleFile(top, mergeBase, 'REVIEW_RULES.yaml', 'rules.autosdeYamlBytes');
   const reviewMd = await showRuleFile(top, mergeBase, 'REVIEW.md', 'rules.reviewMdBytes');
 
   // Commit messages for merge-base..HEAD.

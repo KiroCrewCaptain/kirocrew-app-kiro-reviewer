@@ -39484,7 +39484,7 @@ var LIMITS = {
   contextFiles: 20,
   contextFileBytes: 1e5,
   contextTotalBytes: 2e5,
-  rulesReviewRulesYamlBytes: 131072,
+  rulesAutosdeYamlBytes: 131072,
   rulesReviewMdBytes: 131072,
   pathChars: 512,
   suppressReasonChars: 500,
@@ -39544,7 +39544,7 @@ function checkPayloadLimits(p) {
   }
   checkLimit("context.totalBytes", LIMITS.contextTotalBytes, total);
   if (p.rules?.reviewRulesYaml !== void 0) {
-    checkLimit("rules.reviewRulesYamlBytes", LIMITS.rulesReviewRulesYamlBytes, utf8Bytes(p.rules.reviewRulesYaml));
+    checkLimit("rules.autosdeYamlBytes", LIMITS.rulesAutosdeYamlBytes, utf8Bytes(p.rules.reviewRulesYaml));
   }
   if (p.rules?.reviewMd !== void 0) {
     checkLimit("rules.reviewMdBytes", LIMITS.rulesReviewMdBytes, utf8Bytes(p.rules.reviewMd));
@@ -40380,7 +40380,7 @@ async function collectRepo(input2) {
     }
   }
   if (diff.trim() === "") throw new ToolError("EMPTY_DIFF", "There are no changes between the merge-base and HEAD.");
-  const reviewRulesYaml = await showRuleFile(top, mergeBase, "REVIEW_RULES.yaml", "rules.reviewRulesYamlBytes");
+  const reviewRulesYaml = await showRuleFile(top, mergeBase, "REVIEW_RULES.yaml", "rules.autosdeYamlBytes");
   const reviewMd = await showRuleFile(top, mergeBase, "REVIEW.md", "rules.reviewMdBytes");
   const commits = await collectCommits(top, mergeBase, headSha);
   const context = [];
@@ -40686,7 +40686,14 @@ function buildPayload(i) {
   if (i.commits && i.commits.length > 0) payload2.commits = i.commits;
   if (i.reviewId && i.responses && i.responses.length > 0) payload2.responses = i.responses;
   if (i.rules?.reviewRulesYaml !== void 0 || i.rules?.reviewMd !== void 0) {
-    payload2.rules = { source: "base", revision: i.mergeBase, ...i.rules };
+    const { reviewRulesYaml, reviewMd } = i.rules;
+    payload2.rules = {
+      source: "base",
+      revision: i.mergeBase,
+      // The BFF still names this field autosdeYaml.
+      ...reviewRulesYaml !== void 0 ? { autosdeYaml: reviewRulesYaml } : {},
+      ...reviewMd !== void 0 ? { reviewMd } : {}
+    };
   }
   if (i.context.length > 0) payload2.context = i.context;
   return payload2;

@@ -379,7 +379,7 @@ action, not the product.
 
 ### Service results shown
 
-- **Limits:** the client pre-checks the same input limits as the service; `rules.reviewRulesYamlBytes` and `rules.reviewMdBytes` are 131,072 bytes
+- **Limits:** the client pre-checks the same input limits as the service; `rules.autosdeYamlBytes` and `rules.reviewMdBytes` are 131,072 bytes
   (128 KB) each.
 - **File exclusion:** the client sends the whole diff; the service excludes generated, fixture, lock and vendored
   files. The prepare summary says so, `code_review_submit`
