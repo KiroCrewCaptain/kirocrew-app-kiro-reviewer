@@ -109,9 +109,9 @@
             },
             "iteration_budget": {
               "type": "integer",
-              "description": "Max iterations, 1..50 (new reviews only).",
+              "description": "Max iterations, 1..20, default 20 (new reviews only).",
               "minimum": 1,
-              "maximum": 50
+              "maximum": 20
             },
             "context_files": {
               "type": "array",

@@ -3,6 +3,7 @@
 
 import { createHash, randomBytes } from 'node:crypto';
 import type { ClientInfo, FindingResponse, SubmitRequest } from '../client/types.js';
+import { LIMITS } from '../limits.js';
 import type { RedactionLocation } from '../redact.js';
 import type { ContextDecision } from './contextAnswers.js';
 import type { ChangedFileSkip } from './changedFiles.js';
@@ -113,7 +114,10 @@ function render(s: PayloadSummary, caps: SummaryCaps): string {
       : `- Head: ${code(s.head)} at ${code(short(s.headSha))} (committed changes only)`,
   );
   if (s.reviewId) lines.push(`- Resubmit: new iteration of ${s.reviewId}`);
-  else lines.push(`- Level: ${s.level ?? 'standard'}; iteration budget: ${s.iterationBudget ?? 3}`);
+  else
+    lines.push(
+      `- Level: ${s.level ?? 'standard'}; iteration budget: ${s.iterationBudget ?? LIMITS.iterationBudgetDefault}`,
+    );
   if (s.contextRounds !== undefined) {
     lines.push(
       s.contextRounds > 0
@@ -261,7 +265,7 @@ export function buildPayload(i: BuildPayloadInput): SubmitRequest {
   };
   if (!i.reviewId) {
     payload.level = i.level ?? 'standard';
-    payload.iterationBudget = i.iterationBudget ?? 3;
+    payload.iterationBudget = i.iterationBudget ?? LIMITS.iterationBudgetDefault;
     if (i.contextRounds !== undefined && i.contextRounds > 0) payload.contextRounds = i.contextRounds;
   }
   if (i.manifest && i.manifest.length > 0) payload.manifest = i.manifest;

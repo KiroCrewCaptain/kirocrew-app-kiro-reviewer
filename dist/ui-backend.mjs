@@ -22177,8 +22177,8 @@ var LIMITS = {
   pathChars: 512,
   suppressReasonChars: 500,
   iterationBudgetMin: 1,
-  iterationBudgetMax: 50,
-  iterationBudgetDefault: 3,
+  iterationBudgetMax: 20,
+  iterationBudgetDefault: 20,
   contextRounds: MAX_CONTEXT_ROUNDS_PER_REVIEW,
   manifestPaths: 2e3,
   contextResponseUnsolicitedFiles: 8,
@@ -23253,7 +23253,10 @@ function render(s, caps) {
     s.includeUncommitted ? `- Head: ${code(s.head)} working tree, including uncommitted changes (untracked files excluded)` : `- Head: ${code(s.head)} at ${code(short(s.headSha))} (committed changes only)`
   );
   if (s.reviewId) lines.push(`- Resubmit: new iteration of ${s.reviewId}`);
-  else lines.push(`- Level: ${s.level ?? "standard"}; iteration budget: ${s.iterationBudget ?? 3}`);
+  else
+    lines.push(
+      `- Level: ${s.level ?? "standard"}; iteration budget: ${s.iterationBudget ?? LIMITS.iterationBudgetDefault}`
+    );
   if (s.contextRounds !== void 0) {
     lines.push(
       s.contextRounds > 0 ? `- Context requests: up to ${s.contextRounds} rounds per review` : "- Context requests: disabled"
@@ -23357,7 +23360,7 @@ function buildPayload(i) {
   };
   if (!i.reviewId) {
     payload2.level = i.level ?? "standard";
-    payload2.iterationBudget = i.iterationBudget ?? 3;
+    payload2.iterationBudget = i.iterationBudget ?? LIMITS.iterationBudgetDefault;
     if (i.contextRounds !== void 0 && i.contextRounds > 0) payload2.contextRounds = i.contextRounds;
   }
   if (i.manifest && i.manifest.length > 0) payload2.manifest = i.manifest;
@@ -24275,7 +24278,7 @@ var prepareInputShape = {
   repoPath: external_exports.string().min(1).describe("Absolute path of the git repository root."),
   base: external_exports.string().regex(REF_RE).refine((s) => !s.startsWith("-"), { message: "must not start with -" }).describe("Base ref, e.g. origin/mainline."),
   level: external_exports.enum(["quick", "standard", "deep"]).optional().describe("Review depth (new reviews only)."),
-  iterationBudget: external_exports.number().int().min(1).max(LIMITS.iterationBudgetMax).optional().describe("Max iterations, 1..50 (new reviews only)."),
+  iterationBudget: external_exports.number().int().min(1).max(LIMITS.iterationBudgetMax).optional().describe("Max iterations, 1..20, default 20 (new reviews only)."),
   contextFiles: external_exports.array(external_exports.string().min(1)).optional().describe("Up to 20 repo-relative files the user approved."),
   includeUncommitted: external_exports.boolean().optional().describe("Diff the working tree instead of HEAD (default false)."),
   reviewId: external_exports.string().regex(REVIEW_ID_RE).optional().describe("Existing review; prepares a resubmit."),

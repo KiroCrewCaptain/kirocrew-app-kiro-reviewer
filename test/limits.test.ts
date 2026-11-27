@@ -176,7 +176,7 @@ describe('client limits (same names as the service)', () => {
       rulesReviewMdBytes: 131_072,
       pathChars: 512,
       suppressReasonChars: 500,
-      iterationBudgetMax: 50,
+      iterationBudgetMax: 20,
     });
   });
 });
